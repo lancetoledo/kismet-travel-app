@@ -6,17 +6,29 @@ import {
   ComposableMap,
   Geographies,
   Geography,
+  ZoomableGroup,
 } from 'react-simple-maps';
 import { scaleLinear } from 'd3-scale';
 import { useSession } from 'next-auth/react';
 import { feature } from 'topojson-client';
+import { geoCentroid, geoPath } from 'd3-geo';
 import usData from 'us-atlas/states-10m.json';
-import { FeatureCollection } from 'geojson';
+import countiesData from 'us-atlas/counties-10m.json';
+import { FeatureCollection, Geometry } from 'geojson';
 
 // Import the Header component
 import Header from '../../components/Header';
 
-const geoData = feature(usData, usData.objects.states) as FeatureCollection;
+// Process the U.S. states map data
+const usGeoData = feature(usData, usData.objects.states) as FeatureCollection;
+
+// Process the U.S. counties map data
+const countiesGeoData = feature(countiesData, countiesData.objects.counties) as FeatureCollection<Geometry, { STATE: string; COUNTY: string }>;
+
+const stateIdToFIPS: { [key: string]: string } = {}; // Map state IDs to FIPS codes
+usGeoData.features.forEach((feature) => {
+  stateIdToFIPS[feature.id.toString()] = feature.id.toString();
+});
 
 const colorScale = scaleLinear<string>()
   .domain([0, 1])
@@ -30,9 +42,32 @@ export default function YourMapPage() {
     }
     return [];
   });
+
+  const [visitedCounties, setVisitedCounties] = useState<{ [stateId: string]: string[] }>(() => {
+    if (typeof window !== 'undefined') {
+      const storedCounties = localStorage.getItem('visitedCounties');
+      return storedCounties ? JSON.parse(storedCounties) : {};
+    }
+    return {};
+  });
+
   const { data: sessionData } = useSession();
 
-  const handleStateClick = (stateId: string) => {
+  const [position, setPosition] = useState<{ coordinates: [number, number]; zoom: number }>({
+    coordinates: [-97, 38], // Center of the U.S.
+    zoom: 1,
+  });
+
+  const [selectedState, setSelectedState] = useState<string | null>(null);
+
+  const handleStateClick = (geo: any) => {
+    const centroid = geoCentroid(geo);
+    const stateId = geo.id.toString();
+    setPosition({ coordinates: centroid as [number, number], zoom: 4 });
+    setSelectedState(stateId);
+  };
+
+  const toggleVisitedState = (stateId: string) => {
     let updatedStates: string[];
     if (visitedStates.includes(stateId)) {
       updatedStates = visitedStates.filter((id) => id !== stateId);
@@ -46,16 +81,49 @@ export default function YourMapPage() {
     }
   };
 
+  const handleCountyClick = (countyId: string, stateId: string) => {
+    const stateCounties = visitedCounties[stateId] || [];
+    let updatedCounties: string[];
+    if (stateCounties.includes(countyId)) {
+      updatedCounties = stateCounties.filter((id) => id !== countyId);
+    } else {
+      updatedCounties = [...stateCounties, countyId];
+    }
+    const updatedVisitedCounties = { ...visitedCounties, [stateId]: updatedCounties };
+    setVisitedCounties(updatedVisitedCounties);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('visitedCounties', JSON.stringify(updatedVisitedCounties));
+    }
+  };
+
   const calculateExploredPercentage = () => {
-    const totalStates = geoData.features.length;
+    const totalStates = usGeoData.features.length;
     if (totalStates === 0) {
       return '0.00';
     }
-    const percentage = (
-      (visitedStates.length / totalStates) *
-      100
-    ).toFixed(2);
+    const percentage = ((visitedStates.length / totalStates) * 100).toFixed(2);
     return percentage;
+  };
+
+  const calculateStateExploredPercentage = (stateId: string) => {
+    const stateCounties = countiesGeoData.features.filter(
+      (county) => county.id.toString().startsWith(stateId)
+    );
+    const totalCounties = stateCounties.length;
+    const visitedCountyIds = visitedCounties[stateId] || [];
+    const visitedCountiesCount = visitedCountyIds.length;
+
+    if (totalCounties === 0) {
+      return '0.00';
+    }
+    const percentage = ((visitedCountiesCount / totalCounties) * 100).toFixed(2);
+    return percentage;
+  };
+
+  const resetZoom = () => {
+    setPosition({ coordinates: [-97, 38], zoom: 1 });
+    setSelectedState(null);
   };
 
   return (
@@ -73,65 +141,144 @@ export default function YourMapPage() {
           <div className="flex justify-center">
             <ComposableMap
               projection="geoAlbersUsa"
+              projectionConfig={{ scale: 1000 }}
               width={800}
               height={500}
             >
-              <Geographies geography={geoData}>
-                {({ geographies }) =>
-                  geographies.map((geo) => {
-                    const stateId = geo.id.toString();
-                    const isVisited = visitedStates.includes(stateId);
-                    return (
-                      <Geography
-                        key={stateId}
-                        geography={geo}
-                        fill={isVisited ? colorScale(1) : colorScale(0)}
-                        stroke="#FFFFFF"
-                        strokeWidth={0.5}
-                        onClick={() => handleStateClick(stateId)}
-                        style={{
-                          default: {
-                            outline: 'none',
-                          },
-                          hover: {
-                            fill: '#80cbc4',
-                            outline: 'none',
-                            cursor: 'pointer',
-                          },
-                          pressed: {
-                            fill: '#4db6ac',
-                            outline: 'none',
-                          },
-                        }}
-                      />
-                    );
-                  })
-                }
-              </Geographies>
+              <ZoomableGroup
+                center={position.coordinates}
+                zoom={position.zoom}
+                onMoveEnd={setPosition}
+              >
+                {selectedState === null ? (
+                  // U.S. States Map
+                  <Geographies geography={usGeoData}>
+                    {({ geographies }) =>
+                      geographies.map((geo) => {
+                        const stateId = geo.id.toString();
+                        const isVisited = visitedStates.includes(stateId);
+                        const centroid = geoCentroid(geo);
+                        return (
+                          <Geography
+                            key={stateId}
+                            geography={geo}
+                            fill={isVisited ? colorScale(1) : colorScale(0)}
+                            stroke="#FFFFFF"
+                            strokeWidth={0.5}
+                            onClick={() => handleStateClick(geo)}
+                            onDoubleClick={() => toggleVisitedState(stateId)}
+                            style={{
+                              default: {
+                                outline: 'none',
+                              },
+                              hover: {
+                                fill: '#80cbc4',
+                                outline: 'none',
+                                cursor: 'pointer',
+                              },
+                              pressed: {
+                                fill: '#4db6ac',
+                                outline: 'none',
+                              },
+                            }}
+                          />
+                        );
+                      })
+                    }
+                  </Geographies>
+                ) : (
+                  // State Counties Map
+                  <Geographies geography={countiesGeoData}>
+                    {({ geographies }) =>
+                      geographies
+                        .filter((geo) => geo.id.toString().startsWith(selectedState))
+                        .map((geo) => {
+                          const countyId = geo.id.toString();
+                          const stateId = selectedState;
+                          const isVisited = (visitedCounties[stateId] || []).includes(countyId);
+                          return (
+                            <Geography
+                              key={countyId}
+                              geography={geo}
+                              fill={isVisited ? colorScale(1) : colorScale(0)}
+                              stroke="#FFFFFF"
+                              strokeWidth={0.5}
+                              onClick={() => handleCountyClick(countyId, stateId)}
+                              style={{
+                                default: {
+                                  outline: 'none',
+                                },
+                                hover: {
+                                  fill: '#80cbc4',
+                                  outline: 'none',
+                                  cursor: 'pointer',
+                                },
+                                pressed: {
+                                  fill: '#4db6ac',
+                                  outline: 'none',
+                                },
+                              }}
+                            />
+                          );
+                        })
+                    }
+                  </Geographies>
+                )}
+              </ZoomableGroup>
             </ComposableMap>
           </div>
         </div>
 
+        {/* Controls */}
+        {selectedState && (
+          <div className="flex justify-center mb-8">
+            <button
+              onClick={resetZoom}
+              className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 transition-colors duration-200"
+            >
+              Back to U.S. Map
+            </button>
+          </div>
+        )}
+
+        {/* Stats */}
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-2xl font-semibold text-green-700 mb-4 text-center">
             {sessionData?.user?.name
               ? `${sessionData.user.name}'s Travel Stats`
               : 'Your Travel Stats'}
           </h2>
-          <div className="flex justify-around">
-            <p className="text-lg text-gray-700">
-              States Visited:{' '}
-              <span className="font-bold text-green-700">
-                {visitedStates.length}
-              </span>
-            </p>
-            <p className="text-lg text-gray-700">
-              U.S. Explored:{' '}
-              <span className="font-bold text-green-700">
-                {calculateExploredPercentage()}%
-              </span>
-            </p>
-          </div>
+          {selectedState === null ? (
+            <div className="flex justify-around">
+              <p className="text-lg text-gray-700">
+                States Visited:{' '}
+                <span className="font-bold text-green-700">
+                  {visitedStates.length}
+                </span>
+              </p>
+              <p className="text-lg text-gray-700">
+                U.S. Explored:{' '}
+                <span className="font-bold text-green-700">
+                  {calculateExploredPercentage()}%
+                </span>
+              </p>
+            </div>
+          ) : (
+            <div className="flex justify-around">
+              <p className="text-lg text-gray-700">
+                Counties Visited in {selectedState}:{' '}
+                <span className="font-bold text-green-700">
+                  {(visitedCounties[selectedState] || []).length}
+                </span>
+              </p>
+              <p className="text-lg text-gray-700">
+                {selectedState} Explored:{' '}
+                <span className="font-bold text-green-700">
+                  {calculateStateExploredPercentage(selectedState)}%
+                </span>
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
