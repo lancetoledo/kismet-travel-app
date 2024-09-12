@@ -1,184 +1,138 @@
+// app/your-map/page.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+} from 'react-simple-maps';
 import { scaleLinear } from 'd3-scale';
 import { useSession } from 'next-auth/react';
-import { useAuth } from '../../hooks/useAuth';
-
 import { feature } from 'topojson-client';
-import worldData from 'world-atlas/countries-110m.json';
-
+import usData from 'us-atlas/states-10m.json';
 import { FeatureCollection } from 'geojson';
 
-const geoData = feature(
-  worldData,
-  worldData.objects.countries
-) as FeatureCollection;
+// Import the Header component
+import Header from '../../components/Header';
+
+const geoData = feature(usData, usData.objects.states) as FeatureCollection;
 
 const colorScale = scaleLinear<string>()
   .domain([0, 1])
-  .range(['#ffedea', '#ff5233']);
+  .range(['#e0f2f1', '#00796b']); // Adjusted colors to fit the green theme
 
 export default function YourMapPage() {
-  const [visitedCountries, setVisitedCountries] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { session } = useAuth(true);
+  const [visitedStates, setVisitedStates] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const storedStates = localStorage.getItem('visitedStates');
+      return storedStates ? JSON.parse(storedStates) : [];
+    }
+    return [];
+  });
   const { data: sessionData } = useSession();
 
-  useEffect(() => {
-    const fetchVisitedCountries = async () => {
-      if (!session) {
-        console.log('No session, skipping fetch');
-        setIsLoading(false);
-        return;
-      }
-      setIsLoading(true);
-      setError(null);
-      try {
-        console.log('Fetching visited countries...');
-        const response = await fetch('/api/user/visited-countries');
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Fetched visited countries:', data.visitedCountries);
-          setVisitedCountries(data.visitedCountries || []);
-        } else {
-          console.error('Failed to fetch visited countries');
-          setError('Failed to fetch visited countries');
-        }
-      } catch (error) {
-        console.error('Error fetching visited countries:', error);
-        setError('Error fetching visited countries');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchVisitedCountries();
-  }, [session]);
-
-  const handleCountryClick = async (countryId: string) => {
-    console.log('Country clicked:', countryId);
-    let updatedCountries: string[];
-    if (visitedCountries.includes(countryId)) {
-      updatedCountries = visitedCountries.filter((id) => id !== countryId);
+  const handleStateClick = (stateId: string) => {
+    let updatedStates: string[];
+    if (visitedStates.includes(stateId)) {
+      updatedStates = visitedStates.filter((id) => id !== stateId);
     } else {
-      updatedCountries = [...visitedCountries, countryId];
+      updatedStates = [...visitedStates, stateId];
     }
-    console.log('Updated visited countries:', updatedCountries);
-    setVisitedCountries(updatedCountries);
+    setVisitedStates(updatedStates);
 
-    try {
-      console.log('Updating visited countries on server...');
-      const response = await fetch('/api/user/visited-countries', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ visitedCountries: updatedCountries }),
-      });
-      if (!response.ok) {
-        console.error('Failed to update visited countries');
-        setError('Failed to update visited countries');
-      } else {
-        console.log('Successfully updated visited countries on server');
-      }
-    } catch (error) {
-      console.error('Error updating visited countries:', error);
-      setError('Error updating visited countries');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('visitedStates', JSON.stringify(updatedStates));
     }
   };
 
   const calculateExploredPercentage = () => {
-    const totalCountries = geoData.features.length;
-    if (totalCountries === 0) {
-      console.log('No countries in the world map data');
+    const totalStates = geoData.features.length;
+    if (totalStates === 0) {
       return '0.00';
     }
     const percentage = (
-      (visitedCountries.length / totalCountries) *
+      (visitedStates.length / totalStates) *
       100
     ).toFixed(2);
-    console.log('Calculated explored percentage:', percentage);
     return percentage;
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        Loading...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex justify-center items-center h-screen text-red-500">
-        Error: {error}
-      </div>
-    );
-  }
-
-  console.log('Rendering map with visited countries:', visitedCountries);
-
   return (
-    <div className="min-h-screen bg-white p-8">
-      <h1 className="text-4xl font-bold text-green-500 mb-8">
-        Your World Map
-      </h1>
-      <div className="bg-gray-100 rounded-lg p-4 mb-8">
-        <ComposableMap>
-          <Geographies geography={geoData}>
-            {({ geographies }) =>
-              geographies.map((geo) => {
-                const countryId = geo.properties.iso_a3;
-                const isVisited = visitedCountries.includes(countryId);
-                return (
-                  <Geography
-                    key={countryId}
-                    geography={geo}
-                    fill={isVisited ? colorScale(1) : colorScale(0)}
-                    stroke="#FFFFFF"
-                    strokeWidth={0.5}
-                    onClick={() => handleCountryClick(countryId)}
-                    style={{
-                      default: {
-                        outline: 'none',
-                      },
-                      hover: {
-                        fill: '#F53',
-                        outline: 'none',
-                        cursor: 'pointer',
-                      },
-                      pressed: {
-                        fill: '#E42',
-                        outline: 'none',
-                      },
-                    }}
-                  />
-                );
-              })
-            }
-          </Geographies>
-        </ComposableMap>
-      </div>
-      <div className="bg-gray-100 rounded-lg p-6">
-        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
-          {sessionData?.user?.name}'s Travel Stats
-        </h2>
-        <p className="text-lg text-gray-600 mb-2">
-          Places visited:{' '}
-          <span className="font-bold text-green-500">
-            {visitedCountries.length}
-          </span>
-        </p>
-        <p className="text-lg text-gray-600">
-          World explored:{' '}
-          <span className="font-bold text-green-500">
-            {calculateExploredPercentage()}%
-          </span>
-        </p>
+    <div className="min-h-screen bg-gradient-to-b from-white to-green-50">
+      {/* Header Component */}
+      <Header />
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <h1 className="text-4xl font-extrabold text-green-700 mb-8 text-center">
+          Your Travel Map
+        </h1>
+
+        <div className="bg-white shadow rounded-lg p-6 mb-8">
+          <div className="flex justify-center">
+            <ComposableMap
+              projection="geoAlbersUsa"
+              width={800}
+              height={500}
+            >
+              <Geographies geography={geoData}>
+                {({ geographies }) =>
+                  geographies.map((geo) => {
+                    const stateId = geo.id.toString();
+                    const isVisited = visitedStates.includes(stateId);
+                    return (
+                      <Geography
+                        key={stateId}
+                        geography={geo}
+                        fill={isVisited ? colorScale(1) : colorScale(0)}
+                        stroke="#FFFFFF"
+                        strokeWidth={0.5}
+                        onClick={() => handleStateClick(stateId)}
+                        style={{
+                          default: {
+                            outline: 'none',
+                          },
+                          hover: {
+                            fill: '#80cbc4',
+                            outline: 'none',
+                            cursor: 'pointer',
+                          },
+                          pressed: {
+                            fill: '#4db6ac',
+                            outline: 'none',
+                          },
+                        }}
+                      />
+                    );
+                  })
+                }
+              </Geographies>
+            </ComposableMap>
+          </div>
+        </div>
+
+        <div className="bg-white shadow rounded-lg p-6">
+          <h2 className="text-2xl font-semibold text-green-700 mb-4 text-center">
+            {sessionData?.user?.name
+              ? `${sessionData.user.name}'s Travel Stats`
+              : 'Your Travel Stats'}
+          </h2>
+          <div className="flex justify-around">
+            <p className="text-lg text-gray-700">
+              States Visited:{' '}
+              <span className="font-bold text-green-700">
+                {visitedStates.length}
+              </span>
+            </p>
+            <p className="text-lg text-gray-700">
+              U.S. Explored:{' '}
+              <span className="font-bold text-green-700">
+                {calculateExploredPercentage()}%
+              </span>
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

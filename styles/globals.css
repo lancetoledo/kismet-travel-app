@@ -2,10 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
   --background-end-rgb: 255, 255, 255;
+} */
+
+/* Custom colors (if needed) */
+:root {
+  --green-primary: #00796b;
+  --green-light: #e0f2f1;
+  --green-hover: #80cbc4;
+  --green-pressed: #4db6ac;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -15,8 +23,8 @@
     --background-end-rgb: 0, 0, 0;
   }
 }
-
-body {
+/* old */
+/* body {
   color: rgb(var(--foreground-rgb));
   background: linear-gradient(
       to bottom,
@@ -24,6 +32,11 @@ body {
       rgb(var(--background-end-rgb))
     )
     rgb(var(--background-start-rgb));
+} */
+
+/* Body Background */
+body {
+  @apply bg-gradient-to-b from-white to-green-50;
 }
 
 @layer utilities {
