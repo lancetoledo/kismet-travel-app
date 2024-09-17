@@ -22,7 +22,11 @@ import Header from '../../components/Header';
 
 // Import the majorCities and countyNames data
 import countyNames from '../../data/countyNames.json';
-import majorCities from '../../data/majorCities.json';
+import majorCitiesData from '../../data/majorCities.json';
+
+// Import React Tooltip
+import { Tooltip as ReactTooltip } from 'react-tooltip';
+
 
 // Process the U.S. states map data
 const usGeoData = feature(usData, usData.objects.states) as FeatureCollection;
@@ -37,8 +41,13 @@ const countiesGeoData = feature(
 const stateFIPSToName: { [key: string]: string } = {};
 
 Object.entries(countyNames).forEach(([stateFIPS, stateName]) => {
-  stateFIPSToName[stateFIPS] = stateName;
+  stateFIPSToName[stateFIPS] = stateName as string;
 });
+
+// Filter major cities to include only those with population > 100,000
+const majorCities = majorCitiesData.filter(
+  (city) => city.population >= 100000
+);
 
 const colorScale = scaleLinear<string>()
   .domain([0, 1])
@@ -78,7 +87,7 @@ export default function YourMapPage() {
   const handleStateClick = (geo: any) => {
     const centroid = geoCentroid(geo);
     const stateId = geo.id.toString().padStart(2, '0');
-    setPosition({ coordinates: centroid as [number, number], zoom: 4 });
+    setPosition({ coordinates: centroid as [number, number], zoom: 6 }); // Increased zoom level
     setSelectedState(stateId);
   };
 
@@ -171,6 +180,7 @@ export default function YourMapPage() {
               projectionConfig={{ scale: 1000 }}
               width={800}
               height={500}
+              data-tip="" // Initialize data-tip for ReactTooltip
             >
               <ZoomableGroup
                 center={position.coordinates}
@@ -219,9 +229,9 @@ export default function YourMapPage() {
                       <Marker
                         key={city.geonameid}
                         coordinates={[city.longitude, city.latitude]}
+                        data-tip={`${city.name}, ${stateFIPSToName[city.stateId]}`}
                       >
-                        <circle r={2} fill="#FF5722" />
-                        <title>{`${city.name}, ${stateFIPSToName[city.stateId]}`}</title>
+                        <circle r={1} fill="#FF5722" />
                       </Marker>
                     ))}
                   </>
@@ -276,15 +286,17 @@ export default function YourMapPage() {
                         <Marker
                           key={city.geonameid}
                           coordinates={[city.longitude, city.latitude]}
+                          data-tip={city.name}
                         >
-                          <circle r={2} fill="#FF5722" />
-                          <title>{city.name}</title>
+                          <circle r={1} fill="#FF5722" />
                         </Marker>
                       ))}
                   </>
                 )}
               </ZoomableGroup>
             </ComposableMap>
+            {/* Include ReactTooltip component */}
+            <ReactTooltip />
           </div>
         </div>
 
