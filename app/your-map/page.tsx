@@ -27,7 +27,6 @@ import majorCitiesData from '../../data/majorCities.json';
 // Import React Tooltip
 import { Tooltip as ReactTooltip } from 'react-tooltip';
 
-
 // Process the U.S. states map data
 const usGeoData = feature(usData, usData.objects.states) as FeatureCollection;
 
@@ -87,7 +86,7 @@ export default function YourMapPage() {
   const handleStateClick = (geo: any) => {
     const centroid = geoCentroid(geo);
     const stateId = geo.id.toString().padStart(2, '0');
-    setPosition({ coordinates: centroid as [number, number], zoom: 6 }); // Increased zoom level
+    setPosition({ coordinates: centroid as [number, number], zoom: 12 }); // Increased zoom level
     setSelectedState(stateId);
   };
 
@@ -180,13 +179,8 @@ export default function YourMapPage() {
               projectionConfig={{ scale: 1000 }}
               width={800}
               height={500}
-              data-tip="" // Initialize data-tip for ReactTooltip
             >
-              <ZoomableGroup
-                center={position.coordinates}
-                zoom={position.zoom}
-                onMoveEnd={setPosition}
-              >
+              <ZoomableGroup center={position.coordinates} zoom={position.zoom}>
                 {selectedState === null ? (
                   <>
                     {/* U.S. States Map */}
@@ -229,7 +223,8 @@ export default function YourMapPage() {
                       <Marker
                         key={city.geonameid}
                         coordinates={[city.longitude, city.latitude]}
-                        data-tip={`${city.name}, ${stateFIPSToName[city.stateId]}`}
+                        data-tooltip-id="city-tooltip"
+                        data-tooltip-content={`${city.name}, ${stateFIPSToName[city.stateId]}`}
                       >
                         <circle r={1} fill="#FF5722" />
                       </Marker>
@@ -286,7 +281,8 @@ export default function YourMapPage() {
                         <Marker
                           key={city.geonameid}
                           coordinates={[city.longitude, city.latitude]}
-                          data-tip={city.name}
+                          data-tooltip-id="city-tooltip"
+                          data-tooltip-content={city.name}
                         >
                           <circle r={1} fill="#FF5722" />
                         </Marker>
@@ -296,7 +292,7 @@ export default function YourMapPage() {
               </ZoomableGroup>
             </ComposableMap>
             {/* Include ReactTooltip component */}
-            <ReactTooltip />
+            <ReactTooltip id="city-tooltip" />
           </div>
         </div>
 
