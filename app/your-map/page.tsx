@@ -1,7 +1,8 @@
-// app/your-map/page.tsx
+// File: /app/your-map/page.tsx
+
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ComposableMap,
   Geographies,
@@ -13,6 +14,9 @@ import { scaleLinear } from 'd3-scale';
 import { useSession } from 'next-auth/react';
 import { feature } from 'topojson-client';
 import { geoCentroid } from 'd3-geo';
+import axios from 'axios';
+import debounce from 'lodash.debounce';
+import { toast } from 'react-toastify'; // Import toast
 import usData from 'us-atlas/states-10m.json';
 import countiesData from 'us-atlas/counties-10m.json';
 import { FeatureCollection, Geometry } from 'geojson';
@@ -55,26 +59,11 @@ const colorScale = scaleLinear<string>()
   .range(['#e0f2f1', '#00796b']); // Adjusted colors to fit the green theme
 
 export default function YourMapPage() {
-  const [visitedStates, setVisitedStates] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      const storedStates = localStorage.getItem('visitedStates');
-      return storedStates ? JSON.parse(storedStates) : [];
-    }
-    return [];
-  });
-
+  const [visitedStates, setVisitedStates] = useState<string[]>([]);
   const [visitedCounties, setVisitedCounties] = useState<{
     [stateId: string]: string[];
-  }>(() => {
-    if (typeof window !== 'undefined') {
-      const storedCounties = localStorage.getItem('visitedCounties');
-      return storedCounties ? JSON.parse(storedCounties) : {};
-    }
-    return {};
-  });
-
+  }>({});
   const { data: sessionData } = useSession();
-
   const [position, setPosition] = useState<{
     coordinates: [number, number];
     zoom: number;
@@ -82,8 +71,54 @@ export default function YourMapPage() {
     coordinates: [-97, 38], // Center of the U.S.
     zoom: 1,
   });
-
   const [selectedState, setSelectedState] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch visited locations on mount
+  useEffect(() => {
+    if (!sessionData) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchVisitedLocations = async () => {
+      try {
+        const response = await axios.get('/api/user/visited-locations', { withCredentials: true });
+        console.log('Fetched Visited Locations:', response.data);
+        const { visitedStates, visitedCounties } = response.data;
+        setVisitedStates(visitedStates);
+        setVisitedCounties(visitedCounties);
+      } catch (error) {
+        console.error('Error fetching visited locations:', error);
+        setError('Failed to load visited locations.');
+        toast.error('Failed to load your visited locations.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchVisitedLocations();
+  }, [sessionData]);
+
+  // Debounced function to update visited locations
+  const updateVisitedLocations = useCallback(
+    debounce(async (updatedStates, updatedCounties) => {
+      try {
+        await axios.post('/api/user/visited-locations', {
+          visitedStates: updatedStates,
+          visitedCounties: updatedCounties,
+        }, {
+          withCredentials: true,
+        });
+        toast.success('Visited locations updated successfully!');
+      } catch (error) {
+        console.error('Error updating visited locations:', error);
+        toast.error('Failed to update visited locations.');
+      }
+    }, 500),
+    []
+  );
 
   const handleStateClick = (geo: any) => {
     const centroid = geoCentroid(geo);
@@ -95,39 +130,39 @@ export default function YourMapPage() {
   const toggleVisitedState = (stateId: string) => {
     stateId = stateId.padStart(2, '0');
     let updatedStates: string[];
+
     if (visitedStates.includes(stateId)) {
       updatedStates = visitedStates.filter((id) => id !== stateId);
+      toast.info(`State ${stateFIPSToName[stateId]} marked as not visited.`);
     } else {
       updatedStates = [...visitedStates, stateId];
+      toast.success(`State ${stateFIPSToName[stateId]} marked as visited.`);
     }
-    setVisitedStates(updatedStates);
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('visitedStates', JSON.stringify(updatedStates));
-    }
+    setVisitedStates(updatedStates);
+    updateVisitedLocations(updatedStates, visitedCounties);
   };
 
   const handleCountyClick = (countyId: string, stateId: string) => {
     stateId = stateId.padStart(2, '0');
     const stateCounties = visitedCounties[stateId] || [];
     let updatedCounties: string[];
+
     if (stateCounties.includes(countyId)) {
       updatedCounties = stateCounties.filter((id) => id !== countyId);
+      toast.info(`County ${countyId} marked as not visited.`);
     } else {
       updatedCounties = [...stateCounties, countyId];
+      toast.success(`County ${countyId} marked as visited.`);
     }
+
     const updatedVisitedCounties = {
       ...visitedCounties,
       [stateId]: updatedCounties,
     };
-    setVisitedCounties(updatedVisitedCounties);
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(
-        'visitedCounties',
-        JSON.stringify(updatedVisitedCounties)
-      );
-    }
+    setVisitedCounties(updatedVisitedCounties);
+    updateVisitedLocations(visitedStates, updatedVisitedCounties);
   };
 
   const calculateExploredPercentage = () => {
@@ -163,6 +198,31 @@ export default function YourMapPage() {
     setSelectedState(null);
   };
 
+  // Loading and error states
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <p>Loading your map...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  if (!sessionData) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <p>Please log in to view your travel map.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-green-50">
       {/* Header Component */}
@@ -181,14 +241,13 @@ export default function YourMapPage() {
               projectionConfig={{ scale: 1000 }}
               width={800}
               height={500}
-              data-tip="" // Initialize data-tip for ReactTooltip
             >
               <ZoomableGroup
                 center={position.coordinates}
                 zoom={position.zoom}
                 onMoveEnd={(newPosition) => setPosition(newPosition)}
                 maxZoom={20} // Increased maxZoom to allow more zooming via scroll
-                minZoom={1}  // Optional: set minZoom if needed
+                minZoom={1} // Optional: set minZoom if needed
               >
                 {selectedState === null ? (
                   <>
@@ -301,7 +360,12 @@ export default function YourMapPage() {
               </ZoomableGroup>
             </ComposableMap>
             {/* Include ReactTooltip component */}
-            <Tooltip id="city-tooltip" place="top" type="dark" effect="solid" />
+            <Tooltip
+              id="city-tooltip"
+              place="top"
+              type="dark"
+              effect="solid"
+            />
           </div>
         </div>
 
