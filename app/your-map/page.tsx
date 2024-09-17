@@ -24,8 +24,9 @@ import Header from '../../components/Header';
 import countyNames from '../../data/countyNames.json';
 import majorCitiesData from '../../data/majorCities.json';
 
-// Import React Tooltip
-import { Tooltip as ReactTooltip } from 'react-tooltip';
+// Import React Tooltip (v5)
+import { Tooltip } from 'react-tooltip';
+import 'react-tooltip/dist/react-tooltip.css'; // Import the CSS for styling
 
 // Process the U.S. states map data
 const usGeoData = feature(usData, usData.objects.states) as FeatureCollection;
@@ -48,6 +49,7 @@ const majorCities = majorCitiesData.filter(
   (city) => city.population >= 100000
 );
 
+// Define color scale
 const colorScale = scaleLinear<string>()
   .domain([0, 1])
   .range(['#e0f2f1', '#00796b']); // Adjusted colors to fit the green theme
@@ -86,7 +88,7 @@ export default function YourMapPage() {
   const handleStateClick = (geo: any) => {
     const centroid = geoCentroid(geo);
     const stateId = geo.id.toString().padStart(2, '0');
-    setPosition({ coordinates: centroid as [number, number], zoom: 12 }); // Increased zoom level
+    setPosition({ coordinates: centroid as [number, number], zoom: 6 }); // Increased zoom level
     setSelectedState(stateId);
   };
 
@@ -179,8 +181,15 @@ export default function YourMapPage() {
               projectionConfig={{ scale: 1000 }}
               width={800}
               height={500}
+              data-tip="" // Initialize data-tip for ReactTooltip
             >
-              <ZoomableGroup center={position.coordinates} zoom={position.zoom}>
+              <ZoomableGroup
+                center={position.coordinates}
+                zoom={position.zoom}
+                onMoveEnd={(newPosition) => setPosition(newPosition)}
+                maxZoom={20} // Increased maxZoom to allow more zooming via scroll
+                minZoom={1}  // Optional: set minZoom if needed
+              >
                 {selectedState === null ? (
                   <>
                     {/* U.S. States Map */}
@@ -292,7 +301,7 @@ export default function YourMapPage() {
               </ZoomableGroup>
             </ComposableMap>
             {/* Include ReactTooltip component */}
-            <ReactTooltip id="city-tooltip" />
+            <Tooltip id="city-tooltip" place="top" type="dark" effect="solid" />
           </div>
         </div>
 
