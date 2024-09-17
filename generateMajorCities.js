@@ -63,6 +63,9 @@ const stateAbbrToFIPS = {
   'VI': '78', // U.S. Virgin Islands
 };
 
+// Set of valid country codes
+const validCountryCodes = new Set(['US', 'PR', 'GU', 'VI', 'AS', 'MP']);
+
 // Create a read stream for the US.txt file
 const fileStream = fs.createReadStream('US.txt');
 
@@ -88,12 +91,18 @@ rl.on('line', (line) => {
   const longitude = fields[5];
   const featureClass = fields[6];
   const featureCode = fields[7];
-  const countryCode = fields[8]; // e.g., 'US', 'PR', 'GU'
-  const admin1Code = fields[10]; // State abbreviation
+  const countryCode = fields[8];
+  const admin1Code = fields[10];
   const population = parseInt(fields[14], 10) || 0;
 
-  // Skip entries not in the U.S. or its territories
-  if (!['US', 'PR', 'GU', 'VI', 'AS', 'MP'].includes(countryCode)) {
+  // Filter by country code
+  if (!validCountryCodes.has(countryCode)) {
+    return;
+  }
+
+  // Check for missing admin1Code
+  if (!admin1Code || admin1Code.trim() === '') {
+    console.warn(`Missing state abbreviation for geonameid: ${geonameid} in country: ${countryCode}`);
     return;
   }
 
@@ -101,8 +110,7 @@ rl.on('line', (line) => {
   const stateFIPS = stateAbbrToFIPS[admin1Code];
 
   if (!stateFIPS) {
-    // Skip entries with unknown state FIPS codes
-    console.warn(`Unknown state abbreviation: ${admin1Code} for geonameid: ${geonameid}`);
+    console.warn(`Unknown state abbreviation: '${admin1Code}' for geonameid: ${geonameid} in country: ${countryCode}`);
     return;
   }
 
