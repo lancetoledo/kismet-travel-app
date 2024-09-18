@@ -1,3 +1,5 @@
+// File: /app/your-map/page.tsx
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -73,7 +75,7 @@ export default function YourMapPage() {
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [usExplored, setUsExplored] = useState<number>(0); // New state for U.S. Explored
+  const [usExplored, setUsExplored] = useState<number>(0); // State for U.S. Explored
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false); // State for dark mode
 
   // Fetch visited locations on mount
@@ -107,25 +109,28 @@ export default function YourMapPage() {
 
   // Debounced function to update visited locations
   const updateVisitedLocations = useCallback(
-    debounce(async (updatedStates, updatedCounties, calculatedUsExplored) => {
-      try {
-        await axios.post(
-          '/api/user/visited-locations',
-          {
-            visitedStates: updatedStates,
-            visitedCounties: updatedCounties,
-          },
-          {
-            withCredentials: true,
-          }
-        );
-        setUsExplored(calculatedUsExplored); // Update U.S. Explored
-        toast.success('Visited locations updated successfully!');
-      } catch (error) {
-        console.error('Error updating visited locations:', error);
-        toast.error('Failed to update visited locations.');
-      }
-    }, 500),
+    debounce(
+      async (updatedStates: string[], updatedCounties: { [key: string]: string[] }, calculatedUsExplored: number) => {
+        try {
+          await axios.post(
+            '/api/user/visited-locations',
+            {
+              visitedStates: updatedStates,
+              visitedCounties: updatedCounties,
+            },
+            {
+              withCredentials: true,
+            }
+          );
+          setUsExplored(calculatedUsExplored); // Update U.S. Explored
+          toast.success('Visited locations updated successfully!');
+        } catch (error) {
+          console.error('Error updating visited locations:', error);
+          toast.error('Failed to update visited locations.');
+        }
+      },
+      500
+    ),
     []
   );
 
@@ -141,21 +146,30 @@ export default function YourMapPage() {
     let updatedStates: string[];
 
     if (visitedStates.includes(stateId)) {
+      // Remove state from visitedStates
       updatedStates = visitedStates.filter((id) => id !== stateId);
       toast.info(`State ${stateFIPSToName[stateId]} marked as not visited.`);
+      // Optionally, remove all counties under this state
+      const updatedCounties = { ...visitedCounties };
+      delete updatedCounties[stateId];
+      setVisitedCounties(updatedCounties);
+      updateVisitedLocations(updatedStates, updatedCounties, parseFloat(((updatedStates.length / 50) * 100).toFixed(2)));
     } else {
+      // Add state to visitedStates
       updatedStates = [...visitedStates, stateId];
       toast.success(`State ${stateFIPSToName[stateId]} marked as visited.`);
+      // Optionally, mark all counties in the state as visited
+      const stateCounties = countiesGeoData.features
+        .filter((county) => county.id.toString().slice(0, 2) === stateId)
+        .map((county) => county.id.toString());
+
+      const updatedCounties = {
+        ...visitedCounties,
+        [stateId]: stateCounties,
+      };
+      setVisitedCounties(updatedCounties);
+      updateVisitedLocations(updatedStates, updatedCounties, parseFloat(((updatedStates.length / 50) * 100).toFixed(2)));
     }
-
-    setVisitedStates(updatedStates);
-
-    // Calculate the new U.S. Explored percentage
-    const newUsExplored = parseFloat(
-      ((updatedStates.length / 50) * 100).toFixed(2)
-    ); // Assuming 50 states
-
-    updateVisitedLocations(updatedStates, visitedCounties, newUsExplored);
   };
 
   const handleCountyClick = (countyId: string, stateId: string) => {
@@ -164,26 +178,49 @@ export default function YourMapPage() {
     let updatedCounties: string[];
 
     if (stateCounties.includes(countyId)) {
+      // Remove county from visitedCounties
       updatedCounties = stateCounties.filter((id) => id !== countyId);
       toast.info(`County ${countyId} marked as not visited.`);
+      // If no counties remain visited in the state, remove the state from visitedStates
+      const updatedStates = updatedCounties.length === 0
+        ? visitedStates.filter((id) => id !== stateId)
+        : visitedStates;
+
+      const updatedVisitedCounties = {
+        ...visitedCounties,
+        [stateId]: updatedCounties,
+      };
+      if (updatedCounties.length === 0) {
+        delete updatedVisitedCounties[stateId];
+      }
+
+      setVisitedCounties(updatedVisitedCounties);
+      setVisitedStates(updatedStates);
+
+      const newUsExplored = parseFloat(((updatedStates.length / 50) * 100).toFixed(2));
+
+      updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
     } else {
+      // Add county to visitedCounties
       updatedCounties = [...stateCounties, countyId];
       toast.success(`County ${countyId} marked as visited.`);
+      // Ensure the state is in visitedStates
+      const updatedStates = visitedStates.includes(stateId)
+        ? visitedStates
+        : [...visitedStates, stateId];
+
+      const updatedVisitedCounties = {
+        ...visitedCounties,
+        [stateId]: updatedCounties,
+      };
+
+      setVisitedCounties(updatedVisitedCounties);
+      setVisitedStates(updatedStates);
+
+      const newUsExplored = parseFloat(((updatedStates.length / 50) * 100).toFixed(2));
+
+      updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
     }
-
-    const updatedVisitedCounties = {
-      ...visitedCounties,
-      [stateId]: updatedCounties,
-    };
-
-    setVisitedCounties(updatedVisitedCounties);
-
-    // Calculate the new U.S. Explored percentage based on states visited
-    const newUsExplored = parseFloat(
-      ((visitedStates.length / 50) * 100).toFixed(2)
-    ); // Assuming 50 states
-
-    updateVisitedLocations(visitedStates, updatedVisitedCounties, newUsExplored);
   };
 
   const calculateStateExploredPercentage = (stateId: string) => {
@@ -244,7 +281,7 @@ export default function YourMapPage() {
 
   return (
     <div className={`${isDarkMode ? 'dark' : ''}`}>
-      <div className="min-h-screen bg-gradient-to-b from-white to-green-50 dark:from-gray-900 dark:to-gray-800">
+      <div className="min-h-screen bg-gradient-to-b from-white to-green-50 dark:from-gray-900 dark:to-gray-800 transition-colors duration-500">
         {/* Header Component */}
         <Header />
 
@@ -285,7 +322,7 @@ export default function YourMapPage() {
                 projectionConfig={{ scale: 1000 }}
                 width={800}
                 height={500}
-                className="dark:bg-gray-700"
+                className="dark:bg-gray-700 rounded-lg"
               >
                 <ZoomableGroup
                   center={position.coordinates}
