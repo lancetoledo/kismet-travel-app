@@ -25,8 +25,9 @@ import { FeatureCollection, Geometry } from 'geojson';
 // Import the Header component
 import Header from '../../components/Header';
 
-// Import the majorCities and countyNames data
+// Import the majorCities, stateNames, and countyNames data
 import countyNames from '../../data/countyNames.json';
+import stateNames from '../../data/stateNames.json'; // Newly added
 import majorCitiesData from '../../data/majorCities.json';
 
 // Import React Tooltip (v5)
@@ -42,10 +43,11 @@ const countiesGeoData = feature(
   countiesData.objects.counties
 ) as FeatureCollection<Geometry, { STATE: string; COUNTY: string }>;
 
-// Map state FIPS codes to state names
+
+// Map state FIPS codes to state names using stateNames.json
 const stateFIPSToName: { [key: string]: string } = {};
 
-Object.entries(countyNames).forEach(([stateFIPS, stateName]) => {
+Object.entries(stateNames).forEach(([stateFIPS, stateName]) => {
   stateFIPSToName[stateFIPS] = stateName as string;
 });
 
@@ -188,7 +190,7 @@ export default function YourMapPage() {
     if (stateCounties.includes(countyId)) {
       // Remove county from visitedCounties
       updatedCounties = stateCounties.filter((id) => id !== countyId);
-      toast.info(`County ${countyId} marked as not visited.`);
+      toast.info(`County ${countyNames[countyId] || countyId} marked as not visited.`);
 
       // If no counties remain visited in the state, remove the state from visitedStates
       if (updatedCounties.length === 0) {
@@ -213,7 +215,7 @@ export default function YourMapPage() {
     } else {
       // Add county to visitedCounties
       updatedCounties = [...stateCounties, countyId];
-      toast.success(`County ${countyId} marked as visited.`);
+      toast.success(`County ${countyNames[countyId] || countyId} marked as visited.`);
 
       // Ensure the state is in visitedStates
       if (!visitedStates.includes(stateId)) {
