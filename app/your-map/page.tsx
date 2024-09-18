@@ -16,7 +16,6 @@ import { feature } from 'topojson-client';
 import { geoCentroid } from 'd3-geo';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
-// react toast
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import usData from 'us-atlas/states-10m.json';
@@ -76,6 +75,7 @@ export default function YourMapPage() {
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [usExplored, setUsExplored] = useState<number>(0); // New state for U.S. Explored
 
   // Fetch visited locations on mount
   useEffect(() => {
@@ -88,9 +88,10 @@ export default function YourMapPage() {
       try {
         const response = await axios.get('/api/user/visited-locations', { withCredentials: true });
         console.log('Fetched Visited Locations:', response.data);
-        const { visitedStates, visitedCounties } = response.data;
+        const { visitedStates, visitedCounties, usExplored } = response.data;
         setVisitedStates(visitedStates);
         setVisitedCounties(visitedCounties);
+        setUsExplored(usExplored); // Set U.S. Explored
       } catch (error) {
         console.error('Error fetching visited locations:', error);
         setError('Failed to load visited locations.');
@@ -105,7 +106,7 @@ export default function YourMapPage() {
 
   // Debounced function to update visited locations
   const updateVisitedLocations = useCallback(
-    debounce(async (updatedStates, updatedCounties) => {
+    debounce(async (updatedStates, updatedCounties, calculatedUsExplored) => {
       try {
         await axios.post('/api/user/visited-locations', {
           visitedStates: updatedStates,
@@ -113,6 +114,7 @@ export default function YourMapPage() {
         }, {
           withCredentials: true,
         });
+        setUsExplored(calculatedUsExplored); // Update U.S. Explored
         toast.success('Visited locations updated successfully!');
       } catch (error) {
         console.error('Error updating visited locations:', error);
@@ -142,7 +144,11 @@ export default function YourMapPage() {
     }
 
     setVisitedStates(updatedStates);
-    updateVisitedLocations(updatedStates, visitedCounties);
+
+    // Calculate the new U.S. Explored percentage
+    const newUsExplored = parseFloat(((updatedStates.length / 50) * 100).toFixed(2)); // Assuming 50 states
+
+    updateVisitedLocations(updatedStates, visitedCounties, newUsExplored);
   };
 
   const handleCountyClick = (countyId: string, stateId: string) => {
@@ -164,7 +170,11 @@ export default function YourMapPage() {
     };
 
     setVisitedCounties(updatedVisitedCounties);
-    updateVisitedLocations(visitedStates, updatedVisitedCounties);
+
+    // Calculate the new U.S. Explored percentage based on states visited
+    const newUsExplored = parseFloat(((visitedStates.length / 50) * 100).toFixed(2)); // Assuming 50 states
+
+    updateVisitedLocations(visitedStates, updatedVisitedCounties, newUsExplored);
   };
 
   const calculateExploredPercentage = () => {
@@ -230,17 +240,18 @@ export default function YourMapPage() {
       {/* Header Component */}
       <Header />
 
+      {/* Toast Container */}
       <ToastContainer
-      position="top-right"
-      autoClose={3000}
-      hideProgressBar={false}
-      newestOnTop={false}
-      closeOnClick
-      rtl={false}
-      pauseOnFocusLoss
-      draggable
-      pauseOnHover
-    />
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -308,7 +319,7 @@ export default function YourMapPage() {
                         data-tooltip-id="city-tooltip"
                         data-tooltip-content={`${city.name}, ${stateFIPSToName[city.stateId]}`}
                       >
-                        <circle r={1} fill="#FF5722" />
+                        <circle r={1.5} fill="#FF5722" />
                       </Marker>
                     ))}
                   </>
@@ -366,7 +377,7 @@ export default function YourMapPage() {
                           data-tooltip-id="city-tooltip"
                           data-tooltip-content={city.name}
                         >
-                          <circle r={1} fill="#FF5722" />
+                          <circle r={0.5} fill="#FF5722" />
                         </Marker>
                       ))}
                   </>
@@ -415,7 +426,7 @@ export default function YourMapPage() {
               <p className="text-lg text-gray-700">
                 U.S. Explored:{' '}
                 <span className="font-bold text-green-700">
-                  {calculateExploredPercentage()}%
+                  {usExplored}%
                 </span>
               </p>
             </div>
