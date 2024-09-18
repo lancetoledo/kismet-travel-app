@@ -110,9 +110,13 @@ export default function YourMapPage() {
   // Debounced function to update visited locations
   const updateVisitedLocations = useCallback(
     debounce(
-      async (updatedStates: string[], updatedCounties: { [key: string]: string[] }, calculatedUsExplored: number) => {
+      async (
+        updatedStates: string[],
+        updatedCounties: { [key: string]: string[] },
+        calculatedUsExplored: number
+      ) => {
         try {
-          await axios.post(
+          const response = await axios.post(
             '/api/user/visited-locations',
             {
               visitedStates: updatedStates,
@@ -122,7 +126,7 @@ export default function YourMapPage() {
               withCredentials: true,
             }
           );
-          setUsExplored(calculatedUsExplored); // Update U.S. Explored
+          setUsExplored(response.data.usExplored); // Update U.S. Explored based on server calculation
           toast.success('Visited locations updated successfully!');
         } catch (error) {
           console.error('Error updating visited locations:', error);
@@ -144,49 +148,55 @@ export default function YourMapPage() {
   const toggleVisitedState = (stateId: string) => {
     stateId = stateId.padStart(2, '0');
     let updatedStates: string[];
+    let updatedCounties: { [key: string]: string[] } = { ...visitedCounties };
 
     if (visitedStates.includes(stateId)) {
       // Remove state from visitedStates
       updatedStates = visitedStates.filter((id) => id !== stateId);
       toast.info(`State ${stateFIPSToName[stateId]} marked as not visited.`);
-      // Optionally, remove all counties under this state
-      const updatedCounties = { ...visitedCounties };
+
+      // Remove all counties under this state
       delete updatedCounties[stateId];
-      setVisitedCounties(updatedCounties);
-      updateVisitedLocations(updatedStates, updatedCounties, parseFloat(((updatedStates.length / 50) * 100).toFixed(2)));
     } else {
       // Add state to visitedStates
       updatedStates = [...visitedStates, stateId];
       toast.success(`State ${stateFIPSToName[stateId]} marked as visited.`);
-      // Optionally, mark all counties in the state as visited
+
+      // Mark all counties in the state as visited
       const stateCounties = countiesGeoData.features
         .filter((county) => county.id.toString().slice(0, 2) === stateId)
         .map((county) => county.id.toString());
 
-      const updatedCounties = {
-        ...visitedCounties,
-        [stateId]: stateCounties,
-      };
-      setVisitedCounties(updatedCounties);
-      updateVisitedLocations(updatedStates, updatedCounties, parseFloat(((updatedStates.length / 50) * 100).toFixed(2)));
+      updatedCounties[stateId] = stateCounties;
     }
+
+    setVisitedStates(updatedStates);
+    setVisitedCounties(updatedCounties);
+
+    // Calculate the new U.S. Explored percentage
+    const newUsExplored = parseFloat(((updatedStates.length / 50) * 100).toFixed(2)); // Assuming 50 states
+
+    updateVisitedLocations(updatedStates, updatedCounties, newUsExplored);
   };
 
   const handleCountyClick = (countyId: string, stateId: string) => {
     stateId = stateId.padStart(2, '0');
     const stateCounties = visitedCounties[stateId] || [];
     let updatedCounties: string[];
+    let updatedStates: string[] = [...visitedStates];
 
     if (stateCounties.includes(countyId)) {
       // Remove county from visitedCounties
       updatedCounties = stateCounties.filter((id) => id !== countyId);
       toast.info(`County ${countyId} marked as not visited.`);
-      // If no counties remain visited in the state, remove the state from visitedStates
-      const updatedStates = updatedCounties.length === 0
-        ? visitedStates.filter((id) => id !== stateId)
-        : visitedStates;
 
-      const updatedVisitedCounties = {
+      // If no counties remain visited in the state, remove the state from visitedStates
+      if (updatedCounties.length === 0) {
+        updatedStates = visitedStates.filter((id) => id !== stateId);
+        delete visitedCounties[stateId];
+      }
+
+      const updatedVisitedCounties: { [key: string]: string[] } = {
         ...visitedCounties,
         [stateId]: updatedCounties,
       };
@@ -204,12 +214,13 @@ export default function YourMapPage() {
       // Add county to visitedCounties
       updatedCounties = [...stateCounties, countyId];
       toast.success(`County ${countyId} marked as visited.`);
-      // Ensure the state is in visitedStates
-      const updatedStates = visitedStates.includes(stateId)
-        ? visitedStates
-        : [...visitedStates, stateId];
 
-      const updatedVisitedCounties = {
+      // Ensure the state is in visitedStates
+      if (!visitedStates.includes(stateId)) {
+        updatedStates = [...visitedStates, stateId];
+      }
+
+      const updatedVisitedCounties: { [key: string]: string[] } = {
         ...visitedCounties,
         [stateId]: updatedCounties,
       };
@@ -235,10 +246,7 @@ export default function YourMapPage() {
     if (totalCounties === 0) {
       return '0.00';
     }
-    const percentage = (
-      (visitedCountiesCount / totalCounties) *
-      100
-    ).toFixed(2);
+    const percentage = ((visitedCountiesCount / totalCounties) * 100).toFixed(2);
     return percentage;
   };
 
@@ -339,6 +347,7 @@ export default function YourMapPage() {
                           geographies.map((geo) => {
                             const stateId = geo.id.toString().padStart(2, '0');
                             const isVisited = visitedStates.includes(stateId);
+                            const stateName = stateFIPSToName[stateId] || 'Unknown State';
                             return (
                               <Geography
                                 key={stateId}
@@ -348,6 +357,8 @@ export default function YourMapPage() {
                                 strokeWidth={0.5}
                                 onClick={() => handleStateClick(geo)}
                                 onDoubleClick={() => toggleVisitedState(stateId)}
+                                data-tooltip-id="state-tooltip"
+                                data-tooltip-content={stateName}
                                 style={{
                                   default: {
                                     outline: 'none',
@@ -396,6 +407,7 @@ export default function YourMapPage() {
                               const isVisited = (
                                 visitedCounties[stateId] || []
                               ).includes(countyId);
+                              const countyName = countyNames[countyId] || 'Unknown County';
                               return (
                                 <Geography
                                   key={countyId}
@@ -404,6 +416,8 @@ export default function YourMapPage() {
                                   stroke="#FFFFFF"
                                   strokeWidth={0.5}
                                   onClick={() => handleCountyClick(countyId, stateId)}
+                                  data-tooltip-id="county-tooltip"
+                                  data-tooltip-content={countyName}
                                   style={{
                                     default: {
                                       outline: 'none',
@@ -441,68 +455,83 @@ export default function YourMapPage() {
                   )}
                 </ZoomableGroup>
               </ComposableMap>
-              {/* Include ReactTooltip component */}
+              {/* Include ReactTooltip components */}
+              <Tooltip
+                id="state-tooltip"
+                place="top"
+                type={isDarkMode ? 'dark' : 'light'}
+                effect="solid"
+                className="!bg-green-700 !text-white dark:!bg-gray-800 dark:!text-green-300"
+              />
+              <Tooltip
+                id="county-tooltip"
+                place="top"
+                type={isDarkMode ? 'dark' : 'light'}
+                effect="solid"
+                className="!bg-green-700 !text-white dark:!bg-gray-800 dark:!text-green-300"
+              />
               <Tooltip
                 id="city-tooltip"
                 place="top"
-                type="dark"
+                type={isDarkMode ? 'dark' : 'light'}
                 effect="solid"
+                className="!bg-green-700 !text-white dark:!bg-gray-800 dark:!text-green-300"
               />
             </div>
-          </div>
 
-          {/* Controls */}
-          {selectedState && (
-            <div className="flex justify-center mb-8">
-              <button
-                onClick={resetZoom}
-                className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 transition-colors duration-200 dark:bg-green-600 dark:hover:bg-green-500"
-              >
-                Back to U.S. Map
-              </button>
-            </div>
-          )}
-
-          {/* Stats */}
-          <div className="bg-white shadow rounded-lg p-6 dark:bg-gray-800">
-            <h2 className="text-2xl font-semibold text-green-700 mb-4 text-center dark:text-green-300">
-              {selectedState
-                ? `${stateFIPSToName[selectedState]} Travel Stats`
-                : sessionData?.user?.name
-                ? `${sessionData.user.name}'s Travel Stats`
-                : 'Your Travel Stats'}
-            </h2>
-            {selectedState === null ? (
-              <div className="flex justify-around">
-                <p className="text-lg text-gray-700 dark:text-gray-200">
-                  States Visited:{' '}
-                  <span className="font-bold text-green-700 dark:text-green-300">
-                    {visitedStates.length}
-                  </span>
-                </p>
-                <p className="text-lg text-gray-700 dark:text-gray-200">
-                  U.S. Explored:{' '}
-                  <span className="font-bold text-green-700 dark:text-green-300">
-                    {usExplored}%
-                  </span>
-                </p>
-              </div>
-            ) : (
-              <div className="flex justify-around">
-                <p className="text-lg text-gray-700 dark:text-gray-200">
-                  Counties Visited in {stateFIPSToName[selectedState]}:{' '}
-                  <span className="font-bold text-green-700 dark:text-green-300">
-                    {(visitedCounties[selectedState] || []).length}
-                  </span>
-                </p>
-                <p className="text-lg text-gray-700 dark:text-gray-200">
-                  {stateFIPSToName[selectedState]} Explored:{' '}
-                  <span className="font-bold text-green-700 dark:text-green-300">
-                    {calculateStateExploredPercentage(selectedState)}%
-                  </span>
-                </p>
+            {/* Controls */}
+            {selectedState && (
+              <div className="flex justify-center mb-8">
+                <button
+                  onClick={resetZoom}
+                  className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 transition-colors duration-200 dark:bg-green-600 dark:hover:bg-green-500"
+                >
+                  Back to U.S. Map
+                </button>
               </div>
             )}
+
+            {/* Stats */}
+            <div className="bg-white shadow rounded-lg p-6 dark:bg-gray-800">
+              <h2 className="text-2xl font-semibold text-green-700 mb-4 text-center dark:text-green-300">
+                {selectedState
+                  ? `${stateFIPSToName[selectedState]} Travel Stats`
+                  : sessionData?.user?.name
+                  ? `${sessionData.user.name}'s Travel Stats`
+                  : 'Your Travel Stats'}
+              </h2>
+              {selectedState === null ? (
+                <div className="flex justify-around">
+                  <p className="text-lg text-gray-700 dark:text-gray-200">
+                    States Visited:{' '}
+                    <span className="font-bold text-green-700 dark:text-green-300">
+                      {visitedStates.length}
+                    </span>
+                  </p>
+                  <p className="text-lg text-gray-700 dark:text-gray-200">
+                    U.S. Explored:{' '}
+                    <span className="font-bold text-green-700 dark:text-green-300">
+                      {usExplored}%
+                    </span>
+                  </p>
+                </div>
+              ) : (
+                <div className="flex justify-around">
+                  <p className="text-lg text-gray-700 dark:text-gray-200">
+                    Counties Visited in {stateFIPSToName[selectedState]}:{' '}
+                    <span className="font-bold text-green-700 dark:text-green-300">
+                      {(visitedCounties[selectedState] || []).length}
+                    </span>
+                  </p>
+                  <p className="text-lg text-gray-700 dark:text-gray-200">
+                    {stateFIPSToName[selectedState]} Explored:{' '}
+                    <span className="font-bold text-green-700 dark:text-green-300">
+                      {calculateStateExploredPercentage(selectedState)}%
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
