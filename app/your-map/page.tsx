@@ -16,7 +16,9 @@ import { feature } from 'topojson-client';
 import { geoCentroid } from 'd3-geo';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
-import { toast } from 'react-toastify'; // Import toast
+// react toast
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import usData from 'us-atlas/states-10m.json';
 import countiesData from 'us-atlas/counties-10m.json';
 import { FeatureCollection, Geometry } from 'geojson';
@@ -227,6 +229,18 @@ export default function YourMapPage() {
     <div className="min-h-screen bg-gradient-to-b from-white to-green-50">
       {/* Header Component */}
       <Header />
+
+      <ToastContainer
+      position="top-right"
+      autoClose={3000}
+      hideProgressBar={false}
+      newestOnTop={false}
+      closeOnClick
+      rtl={false}
+      pauseOnFocusLoss
+      draggable
+      pauseOnHover
+    />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
