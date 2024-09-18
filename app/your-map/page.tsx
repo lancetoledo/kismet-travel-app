@@ -1,5 +1,3 @@
-// File: /app/your-map/page.tsx
-
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -57,7 +55,7 @@ const majorCities = majorCitiesData.filter(
 // Define color scale
 const colorScale = scaleLinear<string>()
   .domain([0, 1])
-  .range(['#e0f2f1', '#00796b']); // Adjusted colors to fit the green theme
+  .range(['#a5d6a7', '#2e7d32']); // Adjusted colors to fit the green theme
 
 export default function YourMapPage() {
   const [visitedStates, setVisitedStates] = useState<string[]>([]);
@@ -76,6 +74,7 @@ export default function YourMapPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [usExplored, setUsExplored] = useState<number>(0); // New state for U.S. Explored
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false); // State for dark mode
 
   // Fetch visited locations on mount
   useEffect(() => {
@@ -86,7 +85,9 @@ export default function YourMapPage() {
 
     const fetchVisitedLocations = async () => {
       try {
-        const response = await axios.get('/api/user/visited-locations', { withCredentials: true });
+        const response = await axios.get('/api/user/visited-locations', {
+          withCredentials: true,
+        });
         console.log('Fetched Visited Locations:', response.data);
         const { visitedStates, visitedCounties, usExplored } = response.data;
         setVisitedStates(visitedStates);
@@ -108,12 +109,16 @@ export default function YourMapPage() {
   const updateVisitedLocations = useCallback(
     debounce(async (updatedStates, updatedCounties, calculatedUsExplored) => {
       try {
-        await axios.post('/api/user/visited-locations', {
-          visitedStates: updatedStates,
-          visitedCounties: updatedCounties,
-        }, {
-          withCredentials: true,
-        });
+        await axios.post(
+          '/api/user/visited-locations',
+          {
+            visitedStates: updatedStates,
+            visitedCounties: updatedCounties,
+          },
+          {
+            withCredentials: true,
+          }
+        );
         setUsExplored(calculatedUsExplored); // Update U.S. Explored
         toast.success('Visited locations updated successfully!');
       } catch (error) {
@@ -146,7 +151,9 @@ export default function YourMapPage() {
     setVisitedStates(updatedStates);
 
     // Calculate the new U.S. Explored percentage
-    const newUsExplored = parseFloat(((updatedStates.length / 50) * 100).toFixed(2)); // Assuming 50 states
+    const newUsExplored = parseFloat(
+      ((updatedStates.length / 50) * 100).toFixed(2)
+    ); // Assuming 50 states
 
     updateVisitedLocations(updatedStates, visitedCounties, newUsExplored);
   };
@@ -172,18 +179,11 @@ export default function YourMapPage() {
     setVisitedCounties(updatedVisitedCounties);
 
     // Calculate the new U.S. Explored percentage based on states visited
-    const newUsExplored = parseFloat(((visitedStates.length / 50) * 100).toFixed(2)); // Assuming 50 states
+    const newUsExplored = parseFloat(
+      ((visitedStates.length / 50) * 100).toFixed(2)
+    ); // Assuming 50 states
 
     updateVisitedLocations(visitedStates, updatedVisitedCounties, newUsExplored);
-  };
-
-  const calculateExploredPercentage = () => {
-    const totalStates = usGeoData.features.length;
-    if (totalStates === 0) {
-      return '0.00';
-    }
-    const percentage = ((visitedStates.length / totalStates) * 100).toFixed(2);
-    return percentage;
   };
 
   const calculateStateExploredPercentage = (stateId: string) => {
@@ -210,242 +210,263 @@ export default function YourMapPage() {
     setSelectedState(null);
   };
 
+  // Toggle Dark Mode
+  const toggleDarkMode = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
   // Loading and error states
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <p>Loading your map...</p>
+      <div className="flex justify-center items-center h-screen dark:bg-gray-900">
+        <p className="text-gray-800 dark:text-gray-200">Loading your map...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <p>{error}</p>
+      <div className="flex justify-center items-center h-screen dark:bg-gray-900">
+        <p className="text-red-600 dark:text-red-400">{error}</p>
       </div>
     );
   }
 
   if (!sessionData) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <p>Please log in to view your travel map.</p>
+      <div className="flex justify-center items-center h-screen dark:bg-gray-900">
+        <p className="text-gray-800 dark:text-gray-200">
+          Please log in to view your travel map.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-green-50">
-      {/* Header Component */}
-      <Header />
+    <div className={`${isDarkMode ? 'dark' : ''}`}>
+      <div className="min-h-screen bg-gradient-to-b from-white to-green-50 dark:from-gray-900 dark:to-gray-800">
+        {/* Header Component */}
+        <Header />
 
-      {/* Toast Container */}
-      <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-      />
+        {/* Toast Container */}
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme={isDarkMode ? 'dark' : 'light'}
+        />
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <h1 className="text-4xl font-extrabold text-green-700 mb-8 text-center">
-          Your Travel Map
-        </h1>
+        {/* Dark Mode Toggle */}
+        <div className="flex justify-end p-4">
+          <button
+            onClick={toggleDarkMode}
+            className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 transition-colors duration-200 dark:bg-green-600 dark:hover:bg-green-500"
+          >
+            {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+          </button>
+        </div>
 
-        <div className="bg-white shadow rounded-lg p-6 mb-8">
-          <div className="flex justify-center">
-            <ComposableMap
-              projection="geoAlbersUsa"
-              projectionConfig={{ scale: 1000 }}
-              width={800}
-              height={500}
-            >
-              <ZoomableGroup
-                center={position.coordinates}
-                zoom={position.zoom}
-                onMoveEnd={(newPosition) => setPosition(newPosition)}
-                maxZoom={20} // Increased maxZoom to allow more zooming via scroll
-                minZoom={1} // Optional: set minZoom if needed
+        {/* Main Content */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <h1 className="text-4xl font-extrabold text-green-700 mb-8 text-center dark:text-green-300">
+            Your Travel Map
+          </h1>
+
+          <div className="bg-white shadow rounded-lg p-6 mb-8 dark:bg-gray-800">
+            <div className="flex justify-center">
+              <ComposableMap
+                projection="geoAlbersUsa"
+                projectionConfig={{ scale: 1000 }}
+                width={800}
+                height={500}
+                className="dark:bg-gray-700"
               >
-                {selectedState === null ? (
-                  <>
-                    {/* U.S. States Map */}
-                    <Geographies geography={usGeoData}>
-                      {({ geographies }) =>
-                        geographies.map((geo) => {
-                          const stateId = geo.id.toString().padStart(2, '0');
-                          const isVisited = visitedStates.includes(stateId);
-                          return (
-                            <Geography
-                              key={stateId}
-                              geography={geo}
-                              fill={isVisited ? colorScale(1) : colorScale(0)}
-                              stroke="#FFFFFF"
-                              strokeWidth={0.5}
-                              onClick={() => handleStateClick(geo)}
-                              onDoubleClick={() => toggleVisitedState(stateId)}
-                              style={{
-                                default: {
-                                  outline: 'none',
-                                },
-                                hover: {
-                                  fill: '#80cbc4',
-                                  outline: 'none',
-                                  cursor: 'pointer',
-                                },
-                                pressed: {
-                                  fill: '#4db6ac',
-                                  outline: 'none',
-                                },
-                              }}
-                            />
-                          );
-                        })
-                      }
-                    </Geographies>
-
-                    {/* City Markers */}
-                    {majorCities.map((city) => (
-                      <Marker
-                        key={city.geonameid}
-                        coordinates={[city.longitude, city.latitude]}
-                        data-tooltip-id="city-tooltip"
-                        data-tooltip-content={`${city.name}, ${stateFIPSToName[city.stateId]}`}
-                      >
-                        <circle r={1.5} fill="#FF5722" />
-                      </Marker>
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    {/* State Counties Map */}
-                    <Geographies geography={countiesGeoData}>
-                      {({ geographies }) =>
-                        geographies
-                          .filter(
-                            (geo) =>
-                              geo.id.toString().slice(0, 2) === selectedState
-                          )
-                          .map((geo) => {
-                            const countyId = geo.id.toString();
-                            const stateId = selectedState;
-                            const isVisited = (
-                              visitedCounties[stateId] || []
-                            ).includes(countyId);
+                <ZoomableGroup
+                  center={position.coordinates}
+                  zoom={position.zoom}
+                  onMoveEnd={(newPosition) => setPosition(newPosition)}
+                  maxZoom={20} // Increased maxZoom to allow more zooming via scroll
+                  minZoom={1} // Optional: set minZoom if needed
+                >
+                  {selectedState === null ? (
+                    <>
+                      {/* U.S. States Map */}
+                      <Geographies geography={usGeoData}>
+                        {({ geographies }) =>
+                          geographies.map((geo) => {
+                            const stateId = geo.id.toString().padStart(2, '0');
+                            const isVisited = visitedStates.includes(stateId);
                             return (
                               <Geography
-                                key={countyId}
+                                key={stateId}
                                 geography={geo}
-                                fill={isVisited ? colorScale(1) : colorScale(0)}
+                                fill={isVisited ? '#2e7d32' : '#a5d6a7'} // Adjusted colors
                                 stroke="#FFFFFF"
                                 strokeWidth={0.5}
-                                onClick={() => handleCountyClick(countyId, stateId)}
+                                onClick={() => handleStateClick(geo)}
+                                onDoubleClick={() => toggleVisitedState(stateId)}
                                 style={{
                                   default: {
                                     outline: 'none',
                                   },
                                   hover: {
-                                    fill: '#80cbc4',
+                                    fill: '#66bb6a',
                                     outline: 'none',
                                     cursor: 'pointer',
                                   },
                                   pressed: {
-                                    fill: '#4db6ac',
+                                    fill: '#388e3c',
                                     outline: 'none',
                                   },
                                 }}
                               />
                             );
                           })
-                      }
-                    </Geographies>
+                        }
+                      </Geographies>
 
-                    {/* City Markers for the Selected State */}
-                    {majorCities
-                      .filter((city) => city.stateId === selectedState)
-                      .map((city) => (
+                      {/* City Markers */}
+                      {majorCities.map((city) => (
                         <Marker
                           key={city.geonameid}
                           coordinates={[city.longitude, city.latitude]}
                           data-tooltip-id="city-tooltip"
-                          data-tooltip-content={city.name}
+                          data-tooltip-content={`${city.name}, ${stateFIPSToName[city.stateId]}`}
                         >
-                          <circle r={0.5} fill="#FF5722" />
+                          <circle r={1.5} fill="#FF5722" />
                         </Marker>
                       ))}
-                  </>
-                )}
-              </ZoomableGroup>
-            </ComposableMap>
-            {/* Include ReactTooltip component */}
-            <Tooltip
-              id="city-tooltip"
-              place="top"
-              type="dark"
-              effect="solid"
-            />
-          </div>
-        </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* State Counties Map */}
+                      <Geographies geography={countiesGeoData}>
+                        {({ geographies }) =>
+                          geographies
+                            .filter(
+                              (geo) =>
+                                geo.id.toString().slice(0, 2) === selectedState
+                            )
+                            .map((geo) => {
+                              const countyId = geo.id.toString();
+                              const stateId = selectedState;
+                              const isVisited = (
+                                visitedCounties[stateId] || []
+                              ).includes(countyId);
+                              return (
+                                <Geography
+                                  key={countyId}
+                                  geography={geo}
+                                  fill={isVisited ? '#2e7d32' : '#a5d6a7'} // Adjusted colors
+                                  stroke="#FFFFFF"
+                                  strokeWidth={0.5}
+                                  onClick={() => handleCountyClick(countyId, stateId)}
+                                  style={{
+                                    default: {
+                                      outline: 'none',
+                                    },
+                                    hover: {
+                                      fill: '#66bb6a',
+                                      outline: 'none',
+                                      cursor: 'pointer',
+                                    },
+                                    pressed: {
+                                      fill: '#388e3c',
+                                      outline: 'none',
+                                    },
+                                  }}
+                                />
+                              );
+                            })
+                        }
+                      </Geographies>
 
-        {/* Controls */}
-        {selectedState && (
-          <div className="flex justify-center mb-8">
-            <button
-              onClick={resetZoom}
-              className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 transition-colors duration-200"
-            >
-              Back to U.S. Map
-            </button>
-          </div>
-        )}
-
-        {/* Stats */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-2xl font-semibold text-green-700 mb-4 text-center">
-            {selectedState
-              ? `${stateFIPSToName[selectedState]} Travel Stats`
-              : sessionData?.user?.name
-              ? `${sessionData.user.name}'s Travel Stats`
-              : 'Your Travel Stats'}
-          </h2>
-          {selectedState === null ? (
-            <div className="flex justify-around">
-              <p className="text-lg text-gray-700">
-                States Visited:{' '}
-                <span className="font-bold text-green-700">
-                  {visitedStates.length}
-                </span>
-              </p>
-              <p className="text-lg text-gray-700">
-                U.S. Explored:{' '}
-                <span className="font-bold text-green-700">
-                  {usExplored}%
-                </span>
-              </p>
+                      {/* City Markers for the Selected State */}
+                      {majorCities
+                        .filter((city) => city.stateId === selectedState)
+                        .map((city) => (
+                          <Marker
+                            key={city.geonameid}
+                            coordinates={[city.longitude, city.latitude]}
+                            data-tooltip-id="city-tooltip"
+                            data-tooltip-content={city.name}
+                          >
+                            <circle r={0.5} fill="#FF5722" />
+                          </Marker>
+                        ))}
+                    </>
+                  )}
+                </ZoomableGroup>
+              </ComposableMap>
+              {/* Include ReactTooltip component */}
+              <Tooltip
+                id="city-tooltip"
+                place="top"
+                type="dark"
+                effect="solid"
+              />
             </div>
-          ) : (
-            <div className="flex justify-around">
-              <p className="text-lg text-gray-700">
-                Counties Visited in {stateFIPSToName[selectedState]}:{' '}
-                <span className="font-bold text-green-700">
-                  {(visitedCounties[selectedState] || []).length}
-                </span>
-              </p>
-              <p className="text-lg text-gray-700">
-                {stateFIPSToName[selectedState]} Explored:{' '}
-                <span className="font-bold text-green-700">
-                  {calculateStateExploredPercentage(selectedState)}%
-                </span>
-              </p>
+          </div>
+
+          {/* Controls */}
+          {selectedState && (
+            <div className="flex justify-center mb-8">
+              <button
+                onClick={resetZoom}
+                className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 transition-colors duration-200 dark:bg-green-600 dark:hover:bg-green-500"
+              >
+                Back to U.S. Map
+              </button>
             </div>
           )}
+
+          {/* Stats */}
+          <div className="bg-white shadow rounded-lg p-6 dark:bg-gray-800">
+            <h2 className="text-2xl font-semibold text-green-700 mb-4 text-center dark:text-green-300">
+              {selectedState
+                ? `${stateFIPSToName[selectedState]} Travel Stats`
+                : sessionData?.user?.name
+                ? `${sessionData.user.name}'s Travel Stats`
+                : 'Your Travel Stats'}
+            </h2>
+            {selectedState === null ? (
+              <div className="flex justify-around">
+                <p className="text-lg text-gray-700 dark:text-gray-200">
+                  States Visited:{' '}
+                  <span className="font-bold text-green-700 dark:text-green-300">
+                    {visitedStates.length}
+                  </span>
+                </p>
+                <p className="text-lg text-gray-700 dark:text-gray-200">
+                  U.S. Explored:{' '}
+                  <span className="font-bold text-green-700 dark:text-green-300">
+                    {usExplored}%
+                  </span>
+                </p>
+              </div>
+            ) : (
+              <div className="flex justify-around">
+                <p className="text-lg text-gray-700 dark:text-gray-200">
+                  Counties Visited in {stateFIPSToName[selectedState]}:{' '}
+                  <span className="font-bold text-green-700 dark:text-green-300">
+                    {(visitedCounties[selectedState] || []).length}
+                  </span>
+                </p>
+                <p className="text-lg text-gray-700 dark:text-gray-200">
+                  {stateFIPSToName[selectedState]} Explored:{' '}
+                  <span className="font-bold text-green-700 dark:text-green-300">
+                    {calculateStateExploredPercentage(selectedState)}%
+                  </span>
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
