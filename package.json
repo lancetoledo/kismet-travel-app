@@ -10,11 +10,13 @@
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.4.2",
+    "@turf/bbox": "^7.1.0",
     "axios": "^1.7.7",
     "csv-parser": "^3.0.0",
     "csvtojson": "^2.0.10",
     "d3-geo": "^3.1.1",
     "d3-scale": "^4.0.2",
+    "exif-js": "^2.3.0",
     "fs": "^0.0.1-security",
     "lodash.debounce": "^4.0.8",
     "mapbox-gl": "^3.6.0",

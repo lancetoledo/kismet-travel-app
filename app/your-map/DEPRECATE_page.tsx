@@ -2,117 +2,83 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import ReactMapGL, {
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+  ZoomableGroup,
   Marker,
-  Source,
-  Layer,
-  NavigationControl,
-  Popup,
-  MapRef,
-  MapLayerMouseEvent,
-} from 'react-map-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
-import mapboxgl from 'mapbox-gl';
+} from 'react-simple-maps';
+import { scaleLinear } from 'd3-scale';
 import { useSession } from 'next-auth/react';
+import { feature } from 'topojson-client';
+import { geoCentroid } from 'd3-geo';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import usData from 'us-atlas/states-10m.json';
+import countiesData from 'us-atlas/counties-10m.json';
+import { FeatureCollection, Geometry } from 'geojson';
 
-// Import data files
-import countyNames from '../../data/countyNames.json';
-import stateNames from '../../data/stateNames.json';
-import majorCitiesData from '../../data/majorCities.json';
-
-// Import GeoJSON data
-import usStatesGeoJSON from '../../data/usStatesGeo.json';
-import usCountiesGeoJSON from '../../data/usCountiesGeo.json';
-
-// Import Header component
+// Import the Header component
 import Header from '../../components/Header';
 
-// Import Tooltip (optional)
-// You can use libraries like react-tooltip or implement custom tooltips
+// Import the majorCities, stateNames, and countyNames data
+import countyNames from '../../data/countyNames.json';
+import stateNames from '../../data/stateNames.json'; // Newly added
+import majorCitiesData from '../../data/majorCities.json';
+
+// Import React Tooltip (v5)
 import { Tooltip } from 'react-tooltip';
-import 'react-tooltip/dist/react-tooltip.css';
+import 'react-tooltip/dist/react-tooltip.css'; // Import the CSS for styling
 
-// Import Turf.js for bbox calculation
-import bbox from '@turf/bbox';
-import { FeatureCollection, Geometry, GeoJsonProperties } from 'geojson';
+// Process the U.S. states map data
+const usGeoData = feature(usData, usData.objects.states) as FeatureCollection;
 
-// Define TypeScript interfaces
-interface City {
-  geonameid: number;
-  name: string;
-  latitude: number;
-  longitude: number;
-  population: number;
-  stateId: string;
-}
+// Process the U.S. counties map data
+const countiesGeoData = feature(
+  countiesData,
+  countiesData.objects.counties
+) as FeatureCollection<Geometry, { STATE: string; COUNTY: string }>;
 
-interface Photo {
-  _id: string;
-  userId: string;
-  photoUrl: string;
-  thumbnailUrl: string;
-  location: {
-    type: string;
-    coordinates: [number, number];
-  };
-  description: string;
-  createdAt: string;
-}
 
-// Define color scale for visited and unvisited areas
-const visitedColor = '#2e7d32';
-const unvisitedColor = '#a5d6a7';
-const hoverColor = '#66bb6a';
-const pressedColor = '#388e3c';
+// Map state FIPS codes to state names using stateNames.json
+const stateFIPSToName: { [key: string]: string } = {};
 
-// Define layer styles
-const stateLayerStyle: mapboxgl.AnyLayer = {
-  id: 'states-layer',
-  type: 'fill',
-  paint: {
-    'fill-color': ['case', ['in', ['get', 'STATEFP'], ['literal', []]], visitedColor, unvisitedColor],
-    'fill-outline-color': '#FFFFFF',
-    'fill-opacity': 0.6,
-  },
-};
+Object.entries(stateNames).forEach(([stateFIPS, stateName]) => {
+  stateFIPSToName[stateFIPS] = stateName as string;
+});
 
-const countyLayerStyle: mapboxgl.AnyLayer = {
-  id: 'counties-layer',
-  type: 'fill',
-  paint: {
-    'fill-color': ['case', ['in', ['get', 'GEOID'], ['literal', []]], visitedColor, unvisitedColor],
-    'fill-outline-color': '#FFFFFF',
-    'fill-opacity': 0.6,
-  },
-};
+// Filter major cities to include only those with population > 100,000
+const majorCities = majorCitiesData.filter(
+  (city) => city.population >= 0
+);
+
+// Define color scale
+const colorScale = scaleLinear<string>()
+  .domain([0, 1])
+  .range(['#a5d6a7', '#2e7d32']); // Adjusted colors to fit the green theme
 
 export default function YourMapPage() {
-  // State variables
-  const [viewport, setViewport] = useState({
-    latitude: 38,
-    longitude: -97,
-    zoom: 3,
-    bearing: 0,
-    pitch: 0,
-  });
-
   const [visitedStates, setVisitedStates] = useState<string[]>([]);
-  const [visitedCounties, setVisitedCounties] = useState<{ [stateId: string]: string[] }>({});
+  const [visitedCounties, setVisitedCounties] = useState<{
+    [stateId: string]: string[];
+  }>({});
+  const { data: sessionData } = useSession();
+  const [position, setPosition] = useState<{
+    coordinates: [number, number];
+    zoom: number;
+  }>({
+    coordinates: [-97, 38], // Center of the U.S.
+    zoom: 1,
+  });
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [usExplored, setUsExplored] = useState<number>(0);
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
-  const [userPhotos, setUserPhotos] = useState<Photo[]>([]);
-  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
-
-  const { data: sessionData } = useSession();
-  const mapRef = useRef<MapRef>(null);
+  const [usExplored, setUsExplored] = useState<number>(0); // State for U.S. Explored
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false); // State for dark mode
 
   // Fetch visited locations on mount
   useEffect(() => {
@@ -130,7 +96,7 @@ export default function YourMapPage() {
         const { visitedStates, visitedCounties, usExplored } = response.data;
         setVisitedStates(visitedStates);
         setVisitedCounties(visitedCounties);
-        setUsExplored(usExplored);
+        setUsExplored(usExplored); // Set U.S. Explored
       } catch (error) {
         console.error('Error fetching visited locations:', error);
         setError('Failed to load visited locations.');
@@ -141,25 +107,6 @@ export default function YourMapPage() {
     };
 
     fetchVisitedLocations();
-  }, [sessionData]);
-
-  // Fetch user photos on mount
-  useEffect(() => {
-    const fetchUserPhotos = async () => {
-      try {
-        const response = await axios.get('/api/photos/user', {
-          withCredentials: true,
-        });
-        setUserPhotos(response.data.photos);
-      } catch (error) {
-        console.error('Error fetching user photos:', error);
-        toast.error('Failed to load your photos.');
-      }
-    };
-
-    if (sessionData) {
-      fetchUserPhotos();
-    }
   }, [sessionData]);
 
   // Debounced function to update visited locations
@@ -181,7 +128,7 @@ export default function YourMapPage() {
               withCredentials: true,
             }
           );
-          setUsExplored(response.data.usExplored);
+          setUsExplored(response.data.usExplored); // Update U.S. Explored based on server calculation
           toast.success('Visited locations updated successfully!');
         } catch (error) {
           console.error('Error updating visited locations:', error);
@@ -193,30 +140,13 @@ export default function YourMapPage() {
     []
   );
 
-  // Handler for state click
-  const handleStateClick = (stateId: string) => {
-    stateId = stateId.padStart(2, '0');
+  const handleStateClick = (geo: any) => {
+    const centroid = geoCentroid(geo);
+    const stateId = geo.id.toString().padStart(2, '0');
+    setPosition({ coordinates: centroid as [number, number], zoom: 6 }); // Increased zoom level
     setSelectedState(stateId);
-
-    const stateFeature = usStatesGeoJSON.features.find(
-      (feature) => feature.properties.STATEFP === stateId
-    );
-
-    if (stateFeature) {
-      const boundingBox = bbox(stateFeature);
-      mapRef.current?.fitBounds(
-        [
-          [boundingBox[0], boundingBox[1]],
-          [boundingBox[2], boundingBox[3]],
-        ],
-        {
-          padding: 20,
-        }
-      );
-    }
   };
 
-  // Handler to toggle visited state
   const toggleVisitedState = (stateId: string) => {
     stateId = stateId.padStart(2, '0');
     let updatedStates: string[];
@@ -235,9 +165,9 @@ export default function YourMapPage() {
       toast.success(`State ${stateFIPSToName[stateId]} marked as visited.`);
 
       // Mark all counties in the state as visited
-      const stateCounties = usCountiesGeoJSON.features
-        .filter((county) => county.properties.STATEFP === stateId)
-        .map((county) => county.properties.GEOID);
+      const stateCounties = countiesGeoData.features
+        .filter((county) => county.id.toString().slice(0, 2) === stateId)
+        .map((county) => county.id.toString());
 
       updatedCounties[stateId] = stateCounties;
     }
@@ -251,7 +181,6 @@ export default function YourMapPage() {
     updateVisitedLocations(updatedStates, updatedCounties, newUsExplored);
   };
 
-  // Handler to toggle visited county
   const handleCountyClick = (countyId: string, stateId: string) => {
     stateId = stateId.padStart(2, '0');
     const stateCounties = visitedCounties[stateId] || [];
@@ -307,11 +236,10 @@ export default function YourMapPage() {
     }
   };
 
-  // Calculate the percentage of explored counties in a state
-  const calculateStateExploredPercentage = (stateId: string): string => {
+  const calculateStateExploredPercentage = (stateId: string) => {
     stateId = stateId.padStart(2, '0');
-    const stateCounties = usCountiesGeoJSON.features.filter(
-      (county) => county.properties.STATEFP === stateId
+    const stateCounties = countiesGeoData.features.filter(
+      (county) => county.id.toString().slice(0, 2) === stateId
     );
     const totalCounties = stateCounties.length;
     const visitedCountyIds = visitedCounties[stateId] || [];
@@ -324,45 +252,14 @@ export default function YourMapPage() {
     return percentage;
   };
 
-  // Reset zoom to default position
   const resetZoom = () => {
-    setViewport({
-      latitude: 38,
-      longitude: -97,
-      zoom: 3,
-      bearing: 0,
-      pitch: 0,
-    });
+    setPosition({ coordinates: [-97, 38], zoom: 1 });
     setSelectedState(null);
   };
 
   // Toggle Dark Mode
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
-  };
-
-  // Handle Map Clicks for Layers
-  const handleMapClick = (event: mapboxgl.MapLayerMouseEvent) => {
-    const features = mapRef.current?.queryRenderedFeatures(event.point, {
-      layers: ['states-layer', 'counties-layer'],
-    });
-
-    if (!features || features.length === 0) return;
-
-    const feature = features[0];
-
-    if (feature.layer.id === 'states-layer') {
-      const stateId = feature.properties?.STATEFP;
-      if (stateId) {
-        handleStateClick(stateId);
-      }
-    } else if (feature.layer.id === 'counties-layer') {
-      const countyId = feature.properties?.GEOID;
-      const stateId = countyId?.slice(0, 2);
-      if (countyId && stateId) {
-        handleCountyClick(countyId, stateId);
-      }
-    }
   };
 
   // Loading and error states
@@ -430,141 +327,158 @@ export default function YourMapPage() {
 
           <div className="bg-white shadow rounded-lg p-6 mb-8 dark:bg-gray-800">
             <div className="flex justify-center">
-              <div className="w-full h-[600px]">
-                <ReactMapGL
-                  {...viewport}
-                  ref={mapRef}
-                  mapStyle={
-                    isDarkMode
-                      ? 'mapbox://styles/mapbox/dark-v10'
-                      : 'mapbox://styles/mapbox/light-v10'
-                  }
-                  onMove={(evt) => setViewport(evt.viewState)}
-                  mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
-                  onClick={handleMapClick}
-                  interactiveLayerIds={['states-layer', 'counties-layer']}
+              <ComposableMap
+                projection="geoAlbersUsa"
+                projectionConfig={{ scale: 1000 }}
+                width={800}
+                height={500}
+                className="dark:bg-gray-700 rounded-lg"
+              >
+                <ZoomableGroup
+                  center={position.coordinates}
+                  zoom={position.zoom}
+                  onMoveEnd={(newPosition) => setPosition(newPosition)}
+                  maxZoom={20} // Increased maxZoom to allow more zooming via scroll
+                  minZoom={1} // Optional: set minZoom if needed
                 >
-                  {/* Navigation Control */}
-                  <NavigationControl style={{ right: 10, top: 10 }} showCompass={false} />
+                  {selectedState === null ? (
+                    <>
+                      {/* U.S. States Map */}
+                      <Geographies geography={usGeoData}>
+                        {({ geographies }) =>
+                          geographies.map((geo) => {
+                            const stateId = geo.id.toString().padStart(2, '0');
+                            const isVisited = visitedStates.includes(stateId);
+                            const stateName = stateFIPSToName[stateId] || 'Unknown State';
+                            return (
+                              <Geography
+                                key={stateId}
+                                geography={geo}
+                                fill={isVisited ? '#2e7d32' : '#a5d6a7'} // Adjusted colors
+                                stroke="#FFFFFF"
+                                strokeWidth={0.5}
+                                onClick={() => handleStateClick(geo)}
+                                onDoubleClick={() => toggleVisitedState(stateId)}
+                                data-tooltip-id="state-tooltip"
+                                data-tooltip-content={stateName}
+                                style={{
+                                  default: {
+                                    outline: 'none',
+                                  },
+                                  hover: {
+                                    fill: '#66bb6a',
+                                    outline: 'none',
+                                    cursor: 'pointer',
+                                  },
+                                  pressed: {
+                                    fill: '#388e3c',
+                                    outline: 'none',
+                                  },
+                                }}
+                              />
+                            );
+                          })
+                        }
+                      </Geographies>
 
-                  {/* States Layer */}
-                  <Source id="states" type="geojson" data={usStatesGeoJSON}>
-                    <Layer
-                      id="states-layer"
-                      type="fill"
-                      paint={{
-                        'fill-color': [
-                          'case',
-                          ['in', ['get', 'STATEFP'], ['literal', visitedStates]],
-                          visitedColor,
-                          unvisitedColor,
-                        ],
-                        'fill-outline-color': '#FFFFFF',
-                        'fill-opacity': 0.6,
-                      }}
-                    />
-                  </Source>
-
-                  {/* Counties Layer (when a state is selected) */}
-                  {selectedState && (
-                    <Source
-                      id="counties"
-                      type="geojson"
-                      data={{
-                        type: 'FeatureCollection',
-                        features: usCountiesGeoJSON.features.filter(
-                          (feature) => feature.properties.STATEFP === selectedState
-                        ),
-                      }}
-                    >
-                      <Layer
-                        id="counties-layer"
-                        type="fill"
-                        paint={{
-                          'fill-color': [
-                            'case',
-                            [
-                              'in',
-                              ['get', 'GEOID'],
-                              ['literal', visitedCounties[selectedState] || []],
-                            ],
-                            visitedColor,
-                            unvisitedColor,
-                          ],
-                          'fill-outline-color': '#FFFFFF',
-                          'fill-opacity': 0.6,
-                        }}
-                      />
-                    </Source>
-                  )}
-
-                  {/* Major Cities Markers */}
-                  {majorCities
-                    .filter((city) => !selectedState || city.stateId === selectedState)
-                    .map((city: City) => (
-                      <Marker
-                        key={city.geonameid}
-                        latitude={city.latitude}
-                        longitude={city.longitude}
-                      >
-                        <div
-                          title={`${city.name}, ${stateFIPSToName[city.stateId]}`}
-                          style={{ cursor: 'pointer' }}
+                      {/* City Markers */}
+                      {majorCities.map((city) => (
+                        <Marker
+                          key={city.geonameid}
+                          coordinates={[city.longitude, city.latitude]}
+                          data-tooltip-id="city-tooltip"
+                          data-tooltip-content={`${city.name}, ${stateFIPSToName[city.stateId]}`}
                         >
-                          <svg
-                            height="10"
-                            viewBox="0 0 24 24"
-                            style={{ fill: '#FF5722', stroke: 'none' }}
+                          <circle r={2} fill="#FF5722" />
+                        </Marker>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      {/* State Counties Map */}
+                      <Geographies geography={countiesGeoData}>
+                        {({ geographies }) =>
+                          geographies
+                            .filter(
+                              (geo) =>
+                                geo.id.toString().slice(0, 2) === selectedState
+                            )
+                            .map((geo) => {
+                              const countyId = geo.id.toString();
+                              const stateId = selectedState;
+                              const isVisited = (
+                                visitedCounties[stateId] || []
+                              ).includes(countyId);
+                              const countyName = countyNames[countyId] || 'Unknown County';
+                              return (
+                                <Geography
+                                  key={countyId}
+                                  geography={geo}
+                                  fill={isVisited ? '#2e7d32' : '#a5d6a7'} // Adjusted colors
+                                  stroke="#FFFFFF"
+                                  strokeWidth={0.5}
+                                  onClick={() => handleCountyClick(countyId, stateId)}
+                                  data-tooltip-id="county-tooltip"
+                                  data-tooltip-content={countyName}
+                                  style={{
+                                    default: {
+                                      outline: 'none',
+                                    },
+                                    hover: {
+                                      fill: '#66bb6a',
+                                      outline: 'none',
+                                      cursor: 'pointer',
+                                    },
+                                    pressed: {
+                                      fill: '#388e3c',
+                                      outline: 'none',
+                                    },
+                                  }}
+                                />
+                              );
+                            })
+                        }
+                      </Geographies>
+
+                      {/* City Markers for the Selected State */}
+                      {majorCities
+                        .filter((city) => city.stateId === selectedState)
+                        .map((city) => (
+                          <Marker
+                            key={city.geonameid}
+                            coordinates={[city.longitude, city.latitude]}
+                            data-tooltip-id="city-tooltip"
+                            data-tooltip-content={city.name}
                           >
-                            <circle cx="12" cy="12" r="10" />
-                          </svg>
-                        </div>
-                      </Marker>
-                    ))}
-
-                  {/* User Photos Markers */}
-                  {userPhotos.map((photo: Photo) => (
-                    <Marker
-                      key={photo._id}
-                      latitude={photo.location.coordinates[1]}
-                      longitude={photo.location.coordinates[0]}
-                    >
-                      <div
-                        onClick={() => setSelectedPhoto(photo)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <img
-                          src={photo.thumbnailUrl}
-                          alt="User Photo"
-                          className="rounded-full w-8 h-8 border-2 border-white"
-                        />
-                      </div>
-                    </Marker>
-                  ))}
-
-                  {/* Photo Popup */}
-                  {selectedPhoto && (
-                    <Popup
-                      latitude={selectedPhoto.location.coordinates[1]}
-                      longitude={selectedPhoto.location.coordinates[0]}
-                      onClose={() => setSelectedPhoto(null)}
-                      closeOnClick={false}
-                      offsetTop={-10}
-                    >
-                      <div className="text-center">
-                        <img
-                          src={selectedPhoto.photoUrl}
-                          alt="Selected Photo"
-                          className="w-64 h-64 object-cover rounded"
-                        />
-                        <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
-                          {selectedPhoto.description}
-                        </p>
-                      </div>
-                    </Popup>
+                            <circle r={0.3} fill="#FF5722" />
+                          </Marker>
+                        ))}
+                    </>
                   )}
-                </ReactMapGL>
-              </div>
+                </ZoomableGroup>
+              </ComposableMap>
+              {/* Include ReactTooltip components */}
+              <Tooltip
+                id="state-tooltip"
+                place="top"
+                type={isDarkMode ? 'dark' : 'light'}
+                effect="solid"
+                className="!bg-green-700 !text-white dark:!bg-gray-800 dark:!text-green-300"
+              />
+              <Tooltip
+                id="county-tooltip"
+                place="top"
+                type={isDarkMode ? 'dark' : 'light'}
+                effect="solid"
+                className="!bg-green-700 !text-white dark:!bg-gray-800 dark:!text-green-300"
+              />
+              <Tooltip
+                id="city-tooltip"
+                place="top"
+                type={isDarkMode ? 'dark' : 'light'}
+                effect="solid"
+                className="!bg-green-700 !text-white dark:!bg-gray-800 dark:!text-green-300"
+              />
             </div>
 
             {/* Controls */}
