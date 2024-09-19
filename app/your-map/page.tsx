@@ -53,7 +53,7 @@ Object.entries(stateNames).forEach(([stateFIPS, stateName]) => {
 
 // Filter major cities to include only those with population > 100,000
 const majorCities = majorCitiesData.filter(
-  (city) => city.population >= 100000
+  (city) => city.population >= 0
 );
 
 // Define color scale
@@ -389,7 +389,7 @@ export default function YourMapPage() {
                           data-tooltip-id="city-tooltip"
                           data-tooltip-content={`${city.name}, ${stateFIPSToName[city.stateId]}`}
                         >
-                          <circle r={1.5} fill="#FF5722" />
+                          <circle r={2} fill="#FF5722" />
                         </Marker>
                       ))}
                     </>
@@ -450,7 +450,7 @@ export default function YourMapPage() {
                             data-tooltip-id="city-tooltip"
                             data-tooltip-content={city.name}
                           >
-                            <circle r={0.5} fill="#FF5722" />
+                            <circle r={0.3} fill="#FF5722" />
                           </Marker>
                         ))}
                     </>
