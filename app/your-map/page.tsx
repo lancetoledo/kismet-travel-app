@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import ReactMapGL, {
   Marker as MapboxMarker,
   Source,
@@ -28,9 +28,13 @@ import majorCitiesData from '../../data/majorCities.json';
 import usStatesGeoJSON from '../../data/usStatesGeo.json';
 import usCountiesGeoJSON from '../../data/usCountiesGeo.json';
 
-// Import Header and PhotoUpload components
+// Import components
 import Header from '../../components/Header';
 import PhotoUpload from '../../components/PhotoUpload';
+
+// Import icons
+import { FiMoon, FiSun, FiUpload } from 'react-icons/fi'; // For dark mode and upload icons
+import { Dialog, Transition } from '@headlessui/react'; // Use Dialog instead of Modal
 
 // Import Turf.js for bbox calculation
 import bbox from '@turf/bbox';
@@ -77,9 +81,11 @@ export default function YourMapPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [usExplored, setUsExplored] = useState<number>(0); // U.S. Explored percentage
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false); // Dark mode state
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(true); // Default to dark mode
   const [userPhotos, setUserPhotos] = useState<Photo[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false); // For upload modal
 
   const { data: sessionData } = useSession();
   const mapRef = useRef<MapRef>(null);
@@ -94,13 +100,6 @@ export default function YourMapPage() {
   // Filter major cities to include only those with population > 100,000
   const majorCities = majorCitiesData.filter((city) => city.population > 100000);
 
-  // Log imported data to ensure it's correctly loaded
-  console.log('usStatesGeoJSON:', usStatesGeoJSON);
-  console.log('usCountiesGeoJSON:', usCountiesGeoJSON);
-  console.log('stateNames:', stateNames);
-  console.log('countyNames:', countyNames);
-  console.log('majorCitiesData:', majorCitiesData);
-
   // Fetch visited locations on mount
   useEffect(() => {
     if (!sessionData) {
@@ -113,7 +112,6 @@ export default function YourMapPage() {
         const response = await axios.get('/api/user/visited-locations', {
           withCredentials: true,
         });
-        console.log('Fetched Visited Locations:', response.data);
         const { visitedStates, visitedCounties, usExplored } = response.data;
         setVisitedStates(visitedStates);
         setVisitedCounties(visitedCounties);
@@ -137,7 +135,6 @@ export default function YourMapPage() {
         const response = await axios.get('/api/photos/user', {
           withCredentials: true,
         });
-        console.log('Fetched User Photos:', response.data.photos);
         setUserPhotos(response.data.photos);
       } catch (error) {
         console.error('Error fetching user photos:', error);
@@ -159,12 +156,7 @@ export default function YourMapPage() {
         calculatedUsExplored: number
       ) => {
         try {
-          console.log('Updating visited locations:', {
-            updatedStates,
-            updatedCounties,
-            calculatedUsExplored,
-          });
-          const response = await axios.post(
+          await axios.post(
             '/api/user/visited-locations',
             {
               visitedStates: updatedStates,
@@ -174,8 +166,7 @@ export default function YourMapPage() {
               withCredentials: true,
             }
           );
-          console.log('Update response:', response.data);
-          setUsExplored(response.data.usExplored);
+          setUsExplored(calculatedUsExplored);
           toast.success('Visited locations updated successfully!');
         } catch (error) {
           console.error('Error updating visited locations:', error);
@@ -194,7 +185,6 @@ export default function YourMapPage() {
         const response = await axios.get('/api/photos/user', {
           withCredentials: true,
         });
-        console.log('Fetched User Photos after upload:', response.data.photos);
         setUserPhotos(response.data.photos);
       } catch (error) {
         console.error('Error fetching user photos:', error);
@@ -207,20 +197,15 @@ export default function YourMapPage() {
 
   // Handler for state click
   const handleStateClick = (stateId: string) => {
-    console.log('handleStateClick called with stateId:', stateId);
     stateId = stateId.padStart(2, '0');
-    console.log('Padded stateId:', stateId);
     setSelectedState(stateId);
 
     const stateFeature = usStatesGeoJSON.features.find(
       (feature: GeoFeature) => feature.properties.STATEFP === stateId
     );
 
-    console.log('stateFeature:', stateFeature);
-
     if (stateFeature) {
       const boundingBox = bbox(stateFeature);
-      console.log('State bounding box:', boundingBox);
       if (mapRef.current) {
         mapRef.current.fitBounds(
           [
@@ -231,17 +216,12 @@ export default function YourMapPage() {
             padding: 20,
           }
         );
-      } else {
-        console.error('mapRef.current is null in handleStateClick');
       }
-    } else {
-      console.warn('No state feature found for stateId:', stateId);
     }
   };
 
   // Handler to toggle visited state
   const toggleVisitedState = (stateId: string) => {
-    console.log('toggleVisitedState called with stateId:', stateId);
     stateId = stateId.padStart(2, '0');
     let updatedStates: string[];
     let updatedCounties: { [key: string]: string[] } = { ...visitedCounties };
@@ -277,7 +257,6 @@ export default function YourMapPage() {
 
   // Handler to toggle visited county
   const handleCountyClick = (countyId: string, stateId: string) => {
-    console.log('handleCountyClick called with countyId:', countyId, 'stateId:', stateId);
     stateId = stateId.padStart(2, '0');
     const stateCounties = visitedCounties[stateId] || [];
     let updatedCounties: string[];
@@ -291,7 +270,7 @@ export default function YourMapPage() {
       // If no counties remain visited in the state, remove the state from visitedStates
       if (updatedCounties.length === 0) {
         updatedStates = visitedStates.filter((id) => id !== stateId);
-        delete visitedCounties[stateId];
+        delete updatedCounties[stateId];
       }
 
       const updatedVisitedCounties: { [key: string]: string[] } = {
@@ -349,7 +328,6 @@ export default function YourMapPage() {
 
   // Reset zoom to default position
   const resetZoom = () => {
-    console.log('Resetting zoom to default');
     setViewport({
       latitude: 38,
       longitude: -97,
@@ -367,41 +345,26 @@ export default function YourMapPage() {
 
   // Handle Map Clicks for Layers
   const handleMapClick = (event: any) => {
-    console.log('Map clicked:', event);
-    if (!mapRef.current) {
-      console.error('mapRef.current is undefined');
-      return;
-    }
-    if (!event.point) {
-      console.error('event.point is undefined');
-      return;
-    }
+    if (!mapRef.current || !event.point) return;
+
     const features = mapRef.current.queryRenderedFeatures(event.point, {
       layers: ['states-layer', 'counties-layer'],
     });
-    console.log('Features at click point:', features);
 
     if (!features || features.length === 0) return;
 
     const feature = features[0];
-    console.log('Clicked feature:', feature);
 
     if (feature.layer.id === 'states-layer') {
       const stateId = feature.properties?.STATEFP;
-      console.log('State ID from feature:', stateId);
       if (stateId) {
         handleStateClick(stateId);
-      } else {
-        console.warn('STATEFP property is missing in clicked state feature');
       }
     } else if (feature.layer.id === 'counties-layer') {
       const countyId = feature.properties?.GEOID;
       const stateId = countyId?.slice(0, 2);
-      console.log('County ID from feature:', countyId, 'State ID:', stateId);
       if (countyId && stateId) {
         handleCountyClick(countyId, stateId);
-      } else {
-        console.warn('GEOID property is missing in clicked county feature');
       }
     }
   };
@@ -453,28 +416,32 @@ export default function YourMapPage() {
           theme={isDarkMode ? 'dark' : 'light'}
         />
 
-        {/* Dark Mode Toggle */}
-        <div className="flex justify-end p-4">
-          <button
-            onClick={toggleDarkMode}
-            className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 transition-colors duration-200 dark:bg-green-600 dark:hover:bg-green-500"
-          >
-            {isDarkMode ? 'Light Mode' : 'Dark Mode'}
-          </button>
-        </div>
-
         {/* Main Content */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <h1 className="text-4xl font-extrabold text-green-700 mb-8 text-center dark:text-green-300">
-            Your Travel Map
-          </h1>
+        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          {/* Top Right Controls */}
+          <div className="flex justify-end items-center space-x-4 mb-4">
+            {/* Upload Photo Icon */}
+            <button
+              onClick={() => setIsUploadModalOpen(true)}
+              className="text-gray-800 dark:text-gray-200 hover:text-green-500 dark:hover:text-green-400"
+            >
+              <FiUpload size={24} />
+            </button>
 
-          {/* Photo Upload Component */}
-          <PhotoUpload onUploadSuccess={handlePhotoUploadSuccess} />
+            {/* Dark Mode Toggle Icon */}
+            <button
+              onClick={toggleDarkMode}
+              className="text-gray-800 dark:text-gray-200 hover:text-green-500 dark:hover:text-green-400"
+            >
+              {isDarkMode ? <FiSun size={24} /> : <FiMoon size={24} />}
+            </button>
+          </div>
 
-          <div className="bg-white shadow rounded-lg p-6 mb-8 dark:bg-gray-800">
-            <div className="flex justify-center">
-              <div className="w-full h-[600px]">
+          {/* Map and Stats */}
+          <div className="flex flex-col lg:flex-row">
+            {/* Map Container */}
+            <div className="flex-1 h-[80vh] mb-4 lg:mb-0 lg:mr-4">
+              <div className="w-full h-full">
                 <ReactMapGL
                   {...viewport}
                   ref={mapRef}
@@ -484,10 +451,7 @@ export default function YourMapPage() {
                       : 'mapbox://styles/mapbox/light-v10'
                   }
                   mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
-                  onMove={(evt) => {
-                    console.log('Viewport changed:', evt.viewState);
-                    setViewport(evt.viewState);
-                  }}
+                  onMove={(evt) => setViewport(evt.viewState)}
                   onClick={handleMapClick}
                   interactiveLayerIds={['states-layer', 'counties-layer']}
                 >
@@ -521,10 +485,9 @@ export default function YourMapPage() {
                       type="geojson"
                       data={{
                         type: 'FeatureCollection',
-                        features: usCountiesGeoJSON.features.filter((feature: GeoFeature) => {
-                          const match = feature.properties.STATEFP === selectedState;
-                          return match;
-                        }),
+                        features: usCountiesGeoJSON.features.filter(
+                          (feature: GeoFeature) => feature.properties.STATEFP === selectedState
+                        ),
                       }}
                     >
                       <Layer
@@ -617,20 +580,8 @@ export default function YourMapPage() {
               </div>
             </div>
 
-            {/* Controls */}
-            {selectedState && (
-              <div className="flex justify-center mb-8">
-                <button
-                  onClick={resetZoom}
-                  className="bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 transition-colors duration-200 dark:bg-green-600 dark:hover:bg-green-500"
-                >
-                  Back to U.S. Map
-                </button>
-              </div>
-            )}
-
-            {/* Stats */}
-            <div className="bg-white shadow rounded-lg p-6 dark:bg-gray-800">
+            {/* Stats Panel */}
+            <div className="w-full lg:w-80 bg-white shadow rounded-lg p-6 dark:bg-gray-800">
               <h2 className="text-2xl font-semibold text-green-700 mb-4 text-center dark:text-green-300">
                 {selectedState
                   ? `${stateFIPSToName[selectedState]} Travel Stats`
@@ -639,7 +590,7 @@ export default function YourMapPage() {
                   : 'Your Travel Stats'}
               </h2>
               {selectedState === null ? (
-                <div className="flex justify-around">
+                <div className="space-y-4">
                   <p className="text-lg text-gray-700 dark:text-gray-200">
                     States Visited:{' '}
                     <span className="font-bold text-green-700 dark:text-green-300">
@@ -654,7 +605,7 @@ export default function YourMapPage() {
                   </p>
                 </div>
               ) : (
-                <div className="flex justify-around">
+                <div className="space-y-4">
                   <p className="text-lg text-gray-700 dark:text-gray-200">
                     Counties Visited in {stateFIPSToName[selectedState]}:{' '}
                     <span className="font-bold text-green-700 dark:text-green-300">
@@ -667,11 +618,67 @@ export default function YourMapPage() {
                       {calculateStateExploredPercentage(selectedState)}%
                     </span>
                   </p>
+                  <button
+                    onClick={resetZoom}
+                    className="mt-4 w-full bg-green-700 text-white px-4 py-2 rounded hover:bg-green-800 transition-colors duration-200 dark:bg-green-600 dark:hover:bg-green-500"
+                  >
+                    Back to U.S. Map
+                  </button>
                 </div>
               )}
             </div>
           </div>
         </div>
+
+        {/* Photo Upload Modal */}
+        <Transition appear show={isUploadModalOpen} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setIsUploadModalOpen(false)}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div
+                className="fixed inset-0 bg-black bg-opacity-25 dark:bg-opacity-75"
+                aria-hidden="true"
+              />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex items-center justify-center min-h-full px-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full p-6">
+                    <button
+                      onClick={() => setIsUploadModalOpen(false)}
+                      className="absolute top-3 right-3 text-gray-800 dark:text-gray-200 hover:text-red-500"
+                    >
+                      &times;
+                    </button>
+                    <Dialog.Title
+                      as="h2"
+                      className="text-2xl font-bold mb-4 text-gray-800 dark:text-gray-200"
+                    >
+                      Upload a Photo
+                    </Dialog.Title>
+                    <PhotoUpload onUploadSuccess={handlePhotoUploadSuccess} />
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
       </div>
     </div>
   );
