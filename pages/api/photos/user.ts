@@ -1,8 +1,8 @@
-// File: /pages/api/photos/user.ts
+// /pages/api/photos/user.ts
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import { connectToDatabase } from '../../../lib/mongodb';
+import connectToDatabase from '../../../lib/mongoose';
 import Photo from '../../../lib/models/Photo';
 
 export default async function getUserPhotos(
@@ -16,6 +16,7 @@ export default async function getUserPhotos(
   }
 
   try {
+    // Connect to the database using Mongoose
     await connectToDatabase();
 
     const photos = await Photo.find({ userId: session.user.id }).sort({ createdAt: -1 });
