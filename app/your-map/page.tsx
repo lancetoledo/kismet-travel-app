@@ -25,8 +25,8 @@ import stateNames from '../../data/stateNames.json';
 import majorCitiesData from '../../data/majorCities.json';
 
 // Import GeoJSON data
-import usStatesGeoJSON from '../../data/usStatesGeo.json';
-import usCountiesGeoJSON from '../../data/usCountiesGeo.json';
+import usStatesGeoJSON from '../../data/usStatesFeatureCollection.json';
+import usCountiesGeoJSON from '../../data/usCountiesFeatureCollection.json';
 
 // Import components
 import Header from '../../components/Header';
@@ -54,8 +54,9 @@ interface Photo {
 }
 
 interface GeoFeatureProperties {
-  STATEFP: string;
+  STATEFP?: string;
   GEOID?: string;
+  explorationPercentage?: number;
 }
 
 interface GeoFeature extends GeoJSON.Feature<GeoJSON.Geometry, GeoFeatureProperties> {}
@@ -87,6 +88,8 @@ export default function YourMapPage() {
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false); // For upload modal
 
+  const [statesGeoJSONWithPercentages, setStatesGeoJSONWithPercentages] = useState<any>(null);
+
   const { data: sessionData } = useSession();
   const mapRef = useRef<MapRef>(null);
 
@@ -94,7 +97,7 @@ export default function YourMapPage() {
   const stateFIPSToName: { [key: string]: string } = {};
 
   Object.entries(stateNames).forEach(([stateFIPS, stateName]) => {
-    stateFIPSToName[stateFIPS] = stateName as string;
+    stateFIPSToName[stateFIPS.padStart(2, '0')] = stateName as string;
   });
 
   // Filter major cities to include only those with population > 100,000
@@ -128,7 +131,7 @@ export default function YourMapPage() {
     fetchVisitedLocations();
   }, [sessionData]);
 
-  // Fetch user photos on mount
+    // Fetch user photos on mount
   useEffect(() => {
     const fetchUserPhotos = async () => {
       try {
@@ -201,7 +204,7 @@ export default function YourMapPage() {
     setSelectedState(stateId);
 
     const stateFeature = usStatesGeoJSON.features.find(
-      (feature: GeoFeature) => feature.properties.STATEFP === stateId
+      (feature: GeoFeature) => feature.properties?.STATEFP === stateId
     );
 
     if (stateFeature) {
@@ -240,8 +243,9 @@ export default function YourMapPage() {
 
       // Mark all counties in the state as visited
       const stateCounties = usCountiesGeoJSON.features
-        .filter((county: GeoFeature) => county.properties.STATEFP === stateId)
-        .map((county: GeoFeature) => county.properties.GEOID);
+        .filter((county: GeoFeature) => county.properties?.STATEFP === stateId)
+        .map((county: GeoFeature) => county.properties?.GEOID)
+        .filter((geoid): geoid is string => !!geoid);
 
       updatedCounties[stateId] = stateCounties;
     }
@@ -250,7 +254,16 @@ export default function YourMapPage() {
     setVisitedCounties(updatedCounties);
 
     // Calculate the new U.S. Explored percentage
-    const newUsExplored = parseFloat(((updatedStates.length / 50) * 100).toFixed(2)); // Assuming 50 states
+    const totalVisitedCounties = Object.values(updatedCounties).reduce(
+      (acc, counties) => acc + counties.length,
+      0
+    );
+
+    const totalCounties = usCountiesGeoJSON.features.filter(
+      (county) => county.properties && county.properties.GEOID
+    ).length;
+
+    const newUsExplored = parseFloat(((totalVisitedCounties / totalCounties) * 100).toFixed(2));
 
     updateVisitedLocations(updatedStates, updatedCounties, newUsExplored);
   };
@@ -270,7 +283,7 @@ export default function YourMapPage() {
       // If no counties remain visited in the state, remove the state from visitedStates
       if (updatedCounties.length === 0) {
         updatedStates = visitedStates.filter((id) => id !== stateId);
-        delete updatedCounties[stateId];
+        delete visitedCounties[stateId];
       }
 
       const updatedVisitedCounties: { [key: string]: string[] } = {
@@ -284,7 +297,17 @@ export default function YourMapPage() {
       setVisitedCounties(updatedVisitedCounties);
       setVisitedStates(updatedStates);
 
-      const newUsExplored = parseFloat(((updatedStates.length / 50) * 100).toFixed(2));
+      const totalVisitedCounties = Object.values(updatedVisitedCounties).reduce(
+        (acc, counties) => acc + counties.length,
+        0
+      );
+
+      const totalCounties = usCountiesGeoJSON.features.filter(
+        (county) => county.properties && county.properties.GEOID
+      ).length;
+
+      const newUsExplored = parseFloat(((totalVisitedCounties / totalCounties) * 100).toFixed(2));
+
       updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
     } else {
       // Add county to visitedCounties
@@ -304,7 +327,17 @@ export default function YourMapPage() {
       setVisitedCounties(updatedVisitedCounties);
       setVisitedStates(updatedStates);
 
-      const newUsExplored = parseFloat(((updatedStates.length / 50) * 100).toFixed(2));
+      const totalVisitedCounties = Object.values(updatedVisitedCounties).reduce(
+        (acc, counties) => acc + counties.length,
+        0
+      );
+
+      const totalCounties = usCountiesGeoJSON.features.filter(
+        (county) => county.properties && county.properties.GEOID
+      ).length;
+
+      const newUsExplored = parseFloat(((totalVisitedCounties / totalCounties) * 100).toFixed(2));
+
       updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
     }
   };
@@ -313,7 +346,7 @@ export default function YourMapPage() {
   const calculateStateExploredPercentage = (stateId: string): string => {
     stateId = stateId.padStart(2, '0');
     const stateCounties = usCountiesGeoJSON.features.filter(
-      (county: GeoFeature) => county.properties.STATEFP === stateId
+      (county: GeoFeature) => county.properties?.STATEFP === stateId
     );
     const totalCounties = stateCounties.length;
     const visitedCountyIds = visitedCounties[stateId] || [];
@@ -325,6 +358,46 @@ export default function YourMapPage() {
     const percentage = ((visitedCountiesCount / totalCounties) * 100).toFixed(2);
     return percentage;
   };
+
+  // Update the useEffect hook to calculate exploration percentages
+  useEffect(() => {
+    if (usStatesGeoJSON && usCountiesGeoJSON) {
+      // Create a deep copy to avoid mutating the original data
+      const updatedStatesGeoJSON = JSON.parse(JSON.stringify(usStatesGeoJSON));
+
+      updatedStatesGeoJSON.features = updatedStatesGeoJSON.features
+        .filter((stateFeature) => {
+          const stateId = stateFeature.properties?.STATEFP?.padStart(2, '0');
+          return stateId && stateFIPSToName[stateId];
+        })
+        .map((stateFeature) => {
+          const stateId = stateFeature.properties?.STATEFP?.padStart(2, '0');
+          if (!stateId) {
+            console.warn('State feature missing STATEFP:', stateFeature);
+            return stateFeature;
+          }
+
+          const totalCountiesInState = usCountiesGeoJSON.features.filter(
+            (county) => county.properties?.STATEFP === stateId
+          ).length;
+
+          const visitedCountiesInState = (visitedCounties[stateId] || []).length;
+
+          const explorationPercentage =
+            totalCountiesInState > 0 ? (visitedCountiesInState / totalCountiesInState) * 100 : 0;
+
+          return {
+            ...stateFeature,
+            properties: {
+              ...stateFeature.properties,
+              explorationPercentage,
+            },
+          };
+        });
+
+      setStatesGeoJSONWithPercentages(updatedStatesGeoJSON);
+    }
+  }, [visitedCounties, usStatesGeoJSON, usCountiesGeoJSON]);
 
   // Reset zoom to default position
   const resetZoom = () => {
@@ -441,7 +514,7 @@ export default function YourMapPage() {
           <div className="flex flex-col lg:flex-row">
             {/* Map Container */}
             <div className="flex-1 h-[80vh] mb-4 lg:mb-0 lg:mr-4">
-              <div className="w-full h-full">
+              <div className="w-full h-full relative">
                 <ReactMapGL
                   {...viewport}
                   ref={mapRef}
@@ -459,20 +532,29 @@ export default function YourMapPage() {
                   <NavigationControl style={{ right: 10, top: 10 }} showCompass={false} />
 
                   {/* States Layer */}
-                  {usStatesGeoJSON && (
-                    <Source id="states" type="geojson" data={usStatesGeoJSON}>
+                  {statesGeoJSONWithPercentages && (
+                    <Source id="states" type="geojson" data={statesGeoJSONWithPercentages}>
                       <Layer
                         id="states-layer"
                         type="fill"
                         paint={{
                           'fill-color': [
-                            'case',
-                            ['in', ['get', 'STATEFP'], ['literal', visitedStates]],
-                            VISITED_COLOR, // Visited state color
-                            UNVISITED_COLOR, // Unvisited state color
+                            'interpolate',
+                            ['linear'],
+                            ['get', 'explorationPercentage'],
+                            0,
+                            '#f0f9e8',
+                            25,
+                            '#ccebc5',
+                            50,
+                            '#7bccc4',
+                            75,
+                            '#2b8cbe',
+                            100,
+                            '#084081',
                           ],
                           'fill-outline-color': '#FFFFFF',
-                          'fill-opacity': 0.6,
+                          'fill-opacity': 0.8,
                         }}
                       />
                     </Source>
@@ -486,7 +568,7 @@ export default function YourMapPage() {
                       data={{
                         type: 'FeatureCollection',
                         features: usCountiesGeoJSON.features.filter(
-                          (feature: GeoFeature) => feature.properties.STATEFP === selectedState
+                          (feature: GeoFeature) => feature.properties?.STATEFP === selectedState
                         ),
                       }}
                     >
@@ -577,6 +659,26 @@ export default function YourMapPage() {
                     </Popup>
                   )}
                 </ReactMapGL>
+
+                {/* Map Legend */}
+                <div className="absolute bottom-4 left-4 bg-white dark:bg-gray-700 p-4 rounded shadow">
+                  <h4 className="font-bold mb-2">Exploration Legend</h4>
+                  <div className="flex items-center">
+                    <span className="w-4 h-4 bg-[#f0f9e8] mr-2"></span> 0%
+                  </div>
+                  <div className="flex items-center">
+                    <span className="w-4 h-4 bg-[#ccebc5] mr-2"></span> 25%
+                  </div>
+                  <div className="flex items-center">
+                    <span className="w-4 h-4 bg-[#7bccc4] mr-2"></span> 50%
+                  </div>
+                  <div className="flex items-center">
+                    <span className="w-4 h-4 bg-[#2b8cbe] mr-2"></span> 75%
+                  </div>
+                  <div className="flex items-center">
+                    <span className="w-4 h-4 bg-[#084081] mr-2"></span> 100%
+                  </div>
+                </div>
               </div>
             </div>
 
