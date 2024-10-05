@@ -13,7 +13,7 @@ import ReactMapGL, {
   ViewState,
 } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { useSession } from 'next-auth/react';
+import { useSession } from 'next-auth/react'; // Removed getCsrfToken import
 import axios from 'axios';
 import debounce from 'lodash.debounce';
 import { ToastContainer, toast } from 'react-toastify';
@@ -90,8 +90,14 @@ export default function YourMapPage() {
 
   const [statesGeoJSONWithPercentages, setStatesGeoJSONWithPercentages] = useState<any>(null);
 
+  // State variables for tracking mouse events
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
+
   const { data: sessionData } = useSession();
   const mapRef = useRef<MapRef>(null);
+
+  // Removed CSRF token state and useEffect
 
   // Map state FIPS codes to state names using stateNames.json
   const stateFIPSToName: { [key: string]: string } = {};
@@ -131,7 +137,7 @@ export default function YourMapPage() {
     fetchVisitedLocations();
   }, [sessionData]);
 
-    // Fetch user photos on mount
+  // Fetch user photos on mount
   useEffect(() => {
     const fetchUserPhotos = async () => {
       try {
@@ -158,6 +164,8 @@ export default function YourMapPage() {
         updatedCounties: { [key: string]: string[] },
         calculatedUsExplored: number
       ) => {
+        // Removed CSRF token check and inclusion
+
         try {
           await axios.post(
             '/api/user/visited-locations',
@@ -170,6 +178,7 @@ export default function YourMapPage() {
             }
           );
           setUsExplored(calculatedUsExplored);
+          // Optionally show a success toast here
           toast.success('Visited locations updated successfully!');
         } catch (error) {
           console.error('Error updating visited locations:', error);
@@ -196,31 +205,6 @@ export default function YourMapPage() {
     };
 
     fetchUserPhotos();
-  };
-
-  // Handler for state click
-  const handleStateClick = (stateId: string) => {
-    stateId = stateId.padStart(2, '0');
-    setSelectedState(stateId);
-
-    const stateFeature = usStatesGeoJSON.features.find(
-      (feature: GeoFeature) => feature.properties?.STATEFP === stateId
-    );
-
-    if (stateFeature) {
-      const boundingBox = bbox(stateFeature);
-      if (mapRef.current) {
-        mapRef.current.fitBounds(
-          [
-            [boundingBox[0], boundingBox[1]],
-            [boundingBox[2], boundingBox[3]],
-          ],
-          {
-            padding: 20,
-          }
-        );
-      }
-    }
   };
 
   // Handler to toggle visited state
@@ -269,7 +253,7 @@ export default function YourMapPage() {
   };
 
   // Handler to toggle visited county
-  const handleCountyClick = (countyId: string, stateId: string) => {
+  const toggleVisitedCounty = (countyId: string, stateId: string) => {
     stateId = stateId.padStart(2, '0');
     const stateCounties = visitedCounties[stateId] || [];
     let updatedCounties: string[];
@@ -416,12 +400,42 @@ export default function YourMapPage() {
     setIsDarkMode(!isDarkMode);
   };
 
+  // Click threshold in pixels
+  const clickThreshold = 5;
+
+  const handleMouseDown = (event: any) => {
+    setIsDragging(false);
+    setStartPos({ x: event.point.x, y: event.point.y });
+  };
+
+  const handleMouseMove = (event: any) => {
+    if (!startPos) return;
+    const dx = event.point.x - startPos.x;
+    const dy = event.point.y - startPos.y;
+    if (Math.abs(dx) > clickThreshold || Math.abs(dy) > clickThreshold) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleMouseUp = (event: any) => {
+    if (!isDragging && startPos) {
+      // It's a click
+      handleMapClick(event);
+    }
+    setStartPos(null);
+    setIsDragging(false);
+  };
+
   // Handle Map Clicks for Layers
   const handleMapClick = (event: any) => {
     if (!mapRef.current || !event.point) return;
 
+    const layersToQuery = selectedState
+      ? ['states-layer', 'counties-layer']
+      : ['states-layer'];
+
     const features = mapRef.current.queryRenderedFeatures(event.point, {
-      layers: ['states-layer', 'counties-layer'],
+      layers: layersToQuery,
     });
 
     if (!features || features.length === 0) return;
@@ -431,13 +445,13 @@ export default function YourMapPage() {
     if (feature.layer.id === 'states-layer') {
       const stateId = feature.properties?.STATEFP;
       if (stateId) {
-        handleStateClick(stateId);
+        toggleVisitedState(stateId);
       }
     } else if (feature.layer.id === 'counties-layer') {
       const countyId = feature.properties?.GEOID;
       const stateId = countyId?.slice(0, 2);
       if (countyId && stateId) {
-        handleCountyClick(countyId, stateId);
+        toggleVisitedCounty(countyId, stateId);
       }
     }
   };
@@ -525,8 +539,12 @@ export default function YourMapPage() {
                   }
                   mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
                   onMove={(evt) => setViewport(evt.viewState)}
-                  onClick={handleMapClick}
-                  interactiveLayerIds={['states-layer', 'counties-layer']}
+                  onMouseDown={handleMouseDown}
+                  onMouseUp={handleMouseUp}
+                  onMouseMove={handleMouseMove}
+                  interactiveLayerIds={
+                    selectedState ? ['states-layer', 'counties-layer'] : ['states-layer']
+                  }
                 >
                   {/* Navigation Control */}
                   <NavigationControl style={{ right: 10, top: 10 }} showCompass={false} />
