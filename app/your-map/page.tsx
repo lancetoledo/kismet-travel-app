@@ -10,6 +10,7 @@ import ReactMapGL, {
   NavigationControl,
   Popup,
   MapRef,
+  ViewState,
 } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useSession } from 'next-auth/react';
@@ -63,7 +64,7 @@ const UNVISITED_COLOR = '#a5d6a7';
 
 export default function YourMapPage() {
   // State variables with explicit types
-  const [viewport, setViewport] = useState({
+  const [viewport, setViewport] = useState<ViewState>({
     latitude: 38,
     longitude: -97,
     zoom: 3,
@@ -91,9 +92,14 @@ export default function YourMapPage() {
   });
 
   // Filter major cities to include only those with population > 100,000
-  const majorCities = majorCitiesData.filter(
-    (city) => city.population > 100000
-  );
+  const majorCities = majorCitiesData.filter((city) => city.population > 100000);
+
+  // Log imported data to ensure it's correctly loaded
+  console.log('usStatesGeoJSON:', usStatesGeoJSON);
+  console.log('usCountiesGeoJSON:', usCountiesGeoJSON);
+  console.log('stateNames:', stateNames);
+  console.log('countyNames:', countyNames);
+  console.log('majorCitiesData:', majorCitiesData);
 
   // Fetch visited locations on mount
   useEffect(() => {
@@ -131,6 +137,7 @@ export default function YourMapPage() {
         const response = await axios.get('/api/photos/user', {
           withCredentials: true,
         });
+        console.log('Fetched User Photos:', response.data.photos);
         setUserPhotos(response.data.photos);
       } catch (error) {
         console.error('Error fetching user photos:', error);
@@ -152,6 +159,11 @@ export default function YourMapPage() {
         calculatedUsExplored: number
       ) => {
         try {
+          console.log('Updating visited locations:', {
+            updatedStates,
+            updatedCounties,
+            calculatedUsExplored,
+          });
           const response = await axios.post(
             '/api/user/visited-locations',
             {
@@ -162,6 +174,7 @@ export default function YourMapPage() {
               withCredentials: true,
             }
           );
+          console.log('Update response:', response.data);
           setUsExplored(response.data.usExplored);
           toast.success('Visited locations updated successfully!');
         } catch (error) {
@@ -181,6 +194,7 @@ export default function YourMapPage() {
         const response = await axios.get('/api/photos/user', {
           withCredentials: true,
         });
+        console.log('Fetched User Photos after upload:', response.data.photos);
         setUserPhotos(response.data.photos);
       } catch (error) {
         console.error('Error fetching user photos:', error);
@@ -193,29 +207,41 @@ export default function YourMapPage() {
 
   // Handler for state click
   const handleStateClick = (stateId: string) => {
+    console.log('handleStateClick called with stateId:', stateId);
     stateId = stateId.padStart(2, '0');
+    console.log('Padded stateId:', stateId);
     setSelectedState(stateId);
 
     const stateFeature = usStatesGeoJSON.features.find(
       (feature: GeoFeature) => feature.properties.STATEFP === stateId
     );
 
+    console.log('stateFeature:', stateFeature);
+
     if (stateFeature) {
       const boundingBox = bbox(stateFeature);
-      mapRef.current?.fitBounds(
-        [
-          [boundingBox[0], boundingBox[1]],
-          [boundingBox[2], boundingBox[3]],
-        ],
-        {
-          padding: 20,
-        }
-      );
+      console.log('State bounding box:', boundingBox);
+      if (mapRef.current) {
+        mapRef.current.fitBounds(
+          [
+            [boundingBox[0], boundingBox[1]],
+            [boundingBox[2], boundingBox[3]],
+          ],
+          {
+            padding: 20,
+          }
+        );
+      } else {
+        console.error('mapRef.current is null in handleStateClick');
+      }
+    } else {
+      console.warn('No state feature found for stateId:', stateId);
     }
   };
 
   // Handler to toggle visited state
   const toggleVisitedState = (stateId: string) => {
+    console.log('toggleVisitedState called with stateId:', stateId);
     stateId = stateId.padStart(2, '0');
     let updatedStates: string[];
     let updatedCounties: { [key: string]: string[] } = { ...visitedCounties };
@@ -251,6 +277,7 @@ export default function YourMapPage() {
 
   // Handler to toggle visited county
   const handleCountyClick = (countyId: string, stateId: string) => {
+    console.log('handleCountyClick called with countyId:', countyId, 'stateId:', stateId);
     stateId = stateId.padStart(2, '0');
     const stateCounties = visitedCounties[stateId] || [];
     let updatedCounties: string[];
@@ -264,7 +291,7 @@ export default function YourMapPage() {
       // If no counties remain visited in the state, remove the state from visitedStates
       if (updatedCounties.length === 0) {
         updatedStates = visitedStates.filter((id) => id !== stateId);
-        delete updatedCounties[stateId];
+        delete visitedCounties[stateId];
       }
 
       const updatedVisitedCounties: { [key: string]: string[] } = {
@@ -322,6 +349,7 @@ export default function YourMapPage() {
 
   // Reset zoom to default position
   const resetZoom = () => {
+    console.log('Resetting zoom to default');
     setViewport({
       latitude: 38,
       longitude: -97,
@@ -339,24 +367,41 @@ export default function YourMapPage() {
 
   // Handle Map Clicks for Layers
   const handleMapClick = (event: any) => {
-    const features = mapRef.current?.queryRenderedFeatures(event.point, {
+    console.log('Map clicked:', event);
+    if (!mapRef.current) {
+      console.error('mapRef.current is undefined');
+      return;
+    }
+    if (!event.point) {
+      console.error('event.point is undefined');
+      return;
+    }
+    const features = mapRef.current.queryRenderedFeatures(event.point, {
       layers: ['states-layer', 'counties-layer'],
     });
+    console.log('Features at click point:', features);
 
     if (!features || features.length === 0) return;
 
     const feature = features[0];
+    console.log('Clicked feature:', feature);
 
     if (feature.layer.id === 'states-layer') {
       const stateId = feature.properties?.STATEFP;
+      console.log('State ID from feature:', stateId);
       if (stateId) {
         handleStateClick(stateId);
+      } else {
+        console.warn('STATEFP property is missing in clicked state feature');
       }
     } else if (feature.layer.id === 'counties-layer') {
       const countyId = feature.properties?.GEOID;
       const stateId = countyId?.slice(0, 2);
+      console.log('County ID from feature:', countyId, 'State ID:', stateId);
       if (countyId && stateId) {
         handleCountyClick(countyId, stateId);
+      } else {
+        console.warn('GEOID property is missing in clicked county feature');
       }
     }
   };
@@ -439,7 +484,10 @@ export default function YourMapPage() {
                       : 'mapbox://styles/mapbox/light-v10'
                   }
                   mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
-                  onMove={(evt) => setViewport(evt.viewState)}
+                  onMove={(evt) => {
+                    console.log('Viewport changed:', evt.viewState);
+                    setViewport(evt.viewState);
+                  }}
                   onClick={handleMapClick}
                   interactiveLayerIds={['states-layer', 'counties-layer']}
                 >
@@ -447,33 +495,36 @@ export default function YourMapPage() {
                   <NavigationControl style={{ right: 10, top: 10 }} showCompass={false} />
 
                   {/* States Layer */}
-                  <Source id="states" type="geojson" data={usStatesGeoJSON}>
-                    <Layer
-                      id="states-layer"
-                      type="fill"
-                      paint={{
-                        'fill-color': [
-                          'case',
-                          ['in', ['get', 'STATEFP'], ['literal', visitedStates]],
-                          VISITED_COLOR, // Visited state color
-                          UNVISITED_COLOR, // Unvisited state color
-                        ],
-                        'fill-outline-color': '#FFFFFF',
-                        'fill-opacity': 0.6,
-                      }}
-                    />
-                  </Source>
+                  {usStatesGeoJSON && (
+                    <Source id="states" type="geojson" data={usStatesGeoJSON}>
+                      <Layer
+                        id="states-layer"
+                        type="fill"
+                        paint={{
+                          'fill-color': [
+                            'case',
+                            ['in', ['get', 'STATEFP'], ['literal', visitedStates]],
+                            VISITED_COLOR, // Visited state color
+                            UNVISITED_COLOR, // Unvisited state color
+                          ],
+                          'fill-outline-color': '#FFFFFF',
+                          'fill-opacity': 0.6,
+                        }}
+                      />
+                    </Source>
+                  )}
 
                   {/* Counties Layer (when a state is selected) */}
-                  {selectedState && (
+                  {selectedState && usCountiesGeoJSON && (
                     <Source
                       id="counties"
                       type="geojson"
                       data={{
                         type: 'FeatureCollection',
-                        features: usCountiesGeoJSON.features.filter(
-                          (feature: GeoFeature) => feature.properties.STATEFP === selectedState
-                        ),
+                        features: usCountiesGeoJSON.features.filter((feature: GeoFeature) => {
+                          const match = feature.properties.STATEFP === selectedState;
+                          return match;
+                        }),
                       }}
                     >
                       <Layer

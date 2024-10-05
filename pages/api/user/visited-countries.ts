@@ -2,13 +2,13 @@
 
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import connectToDatabase from '../../../lib/mongodb';
+import connectToDatabase from '../../../lib/mongoose';
 import User from '../../../lib/models/User';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const session = await getSession({ req });
 
-  if (!session) {
+  if (!session || !session.user?.email) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -29,9 +29,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { visitedCountries } = req.body;
       await User.updateOne(
         { email: userEmail },
-        { $set: { visitedCountries } }
+        { $set: { visitedCountries } },
+        { upsert: true }
       );
-      res.status(200).json({ message: 'Updated successfully' });
+      res.status(200).json({ message: 'Visited countries updated successfully' });
     } catch (error) {
       console.error('Error updating visited countries:', error);
       res.status(500).json({ error: 'Internal server error' });
