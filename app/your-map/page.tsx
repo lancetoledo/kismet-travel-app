@@ -2,7 +2,13 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  Fragment,
+} from 'react';
 import ReactMapGL, {
   Marker as MapboxMarker,
   Source,
@@ -77,7 +83,9 @@ export default function YourMapPage() {
     pitch: 0,
   });
   const [visitedStates, setVisitedStates] = useState<string[]>([]);
-  const [visitedCounties, setVisitedCounties] = useState<{ [stateId: string]: string[] }>({});
+  const [visitedCounties, setVisitedCounties] = useState<{
+    [stateId: string]: string[];
+  }>({});
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,16 +96,17 @@ export default function YourMapPage() {
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false); // For upload modal
 
-  const [statesGeoJSONWithPercentages, setStatesGeoJSONWithPercentages] = useState<any>(null);
+  const [statesGeoJSONWithPercentages, setStatesGeoJSONWithPercentages] =
+    useState<any>(null);
 
   // State variables for tracking mouse events
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
+  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
+    null
+  );
 
   const { data: sessionData } = useSession();
   const mapRef = useRef<MapRef>(null);
-
-  // Removed CSRF token state and useEffect
 
   // Map state FIPS codes to state names using stateNames.json
   const stateFIPSToName: { [key: string]: string } = {};
@@ -107,7 +116,9 @@ export default function YourMapPage() {
   });
 
   // Filter major cities to include only those with population > 100,000
-  const majorCities = majorCitiesData.filter((city) => city.population > 100000);
+  const majorCities = majorCitiesData.filter(
+    (city) => city.population > 100000
+  );
 
   // Fetch visited locations on mount
   useEffect(() => {
@@ -125,6 +136,11 @@ export default function YourMapPage() {
         setVisitedStates(visitedStates);
         setVisitedCounties(visitedCounties);
         setUsExplored(usExplored);
+        console.log('Fetched Visited Locations:', {
+          visitedStates,
+          visitedCounties,
+          usExplored,
+        });
       } catch (error) {
         console.error('Error fetching visited locations:', error);
         setError('Failed to load visited locations.');
@@ -145,6 +161,7 @@ export default function YourMapPage() {
           withCredentials: true,
         });
         setUserPhotos(response.data.photos);
+        console.log('Fetched User Photos:', response.data.photos);
       } catch (error) {
         console.error('Error fetching user photos:', error);
         toast.error('Failed to load your photos.');
@@ -164,8 +181,6 @@ export default function YourMapPage() {
         updatedCounties: { [key: string]: string[] },
         calculatedUsExplored: number
       ) => {
-        // Removed CSRF token check and inclusion
-
         try {
           await axios.post(
             '/api/user/visited-locations',
@@ -178,8 +193,12 @@ export default function YourMapPage() {
             }
           );
           setUsExplored(calculatedUsExplored);
-          // Optionally show a success toast here
           toast.success('Visited locations updated successfully!');
+          console.log('Visited locations updated:', {
+            visitedStates: updatedStates,
+            visitedCounties: updatedCounties,
+            usExplored: calculatedUsExplored,
+          });
         } catch (error) {
           console.error('Error updating visited locations:', error);
           toast.error('Failed to update visited locations.');
@@ -198,6 +217,7 @@ export default function YourMapPage() {
           withCredentials: true,
         });
         setUserPhotos(response.data.photos);
+        console.log('User photos updated:', response.data.photos);
       } catch (error) {
         console.error('Error fetching user photos:', error);
         toast.error('Failed to load your photos.');
@@ -227,9 +247,12 @@ export default function YourMapPage() {
 
       // Mark all counties in the state as visited
       const stateCounties = usCountiesGeoJSON.features
-        .filter((county: GeoFeature) => county.properties?.STATEFP === stateId)
-        .map((county: GeoFeature) => county.properties?.GEOID)
-        .filter((geoid): geoid is string => !!geoid);
+        .filter(
+          (county: GeoFeature) =>
+            county.properties?.STATEFP === stateId &&
+            !!county.properties?.GEOID
+        )
+        .map((county: GeoFeature) => county.properties?.GEOID as string);
 
       updatedCounties[stateId] = stateCounties;
     }
@@ -247,7 +270,9 @@ export default function YourMapPage() {
       (county) => county.properties && county.properties.GEOID
     ).length;
 
-    const newUsExplored = parseFloat(((totalVisitedCounties / totalCounties) * 100).toFixed(2));
+    const newUsExplored = parseFloat(
+      ((totalVisitedCounties / totalCounties) * 100).toFixed(2)
+    );
 
     updateVisitedLocations(updatedStates, updatedCounties, newUsExplored);
   };
@@ -290,7 +315,9 @@ export default function YourMapPage() {
         (county) => county.properties && county.properties.GEOID
       ).length;
 
-      const newUsExplored = parseFloat(((totalVisitedCounties / totalCounties) * 100).toFixed(2));
+      const newUsExplored = parseFloat(
+        ((totalVisitedCounties / totalCounties) * 100).toFixed(2)
+      );
 
       updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
     } else {
@@ -320,7 +347,9 @@ export default function YourMapPage() {
         (county) => county.properties && county.properties.GEOID
       ).length;
 
-      const newUsExplored = parseFloat(((totalVisitedCounties / totalCounties) * 100).toFixed(2));
+      const newUsExplored = parseFloat(
+        ((totalVisitedCounties / totalCounties) * 100).toFixed(2)
+      );
 
       updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
     }
@@ -368,7 +397,15 @@ export default function YourMapPage() {
           const visitedCountiesInState = (visitedCounties[stateId] || []).length;
 
           const explorationPercentage =
-            totalCountiesInState > 0 ? (visitedCountiesInState / totalCountiesInState) * 100 : 0;
+            totalCountiesInState > 0
+              ? Number(
+                  ((visitedCountiesInState / totalCountiesInState) * 100).toFixed(2)
+                )
+              : 0;
+
+          console.log(
+            `State ${stateId} (${stateFIPSToName[stateId]}): ${explorationPercentage}% explored`
+          );
 
           return {
             ...stateFeature,
@@ -543,15 +580,25 @@ export default function YourMapPage() {
                   onMouseUp={handleMouseUp}
                   onMouseMove={handleMouseMove}
                   interactiveLayerIds={
-                    selectedState ? ['states-layer', 'counties-layer'] : ['states-layer']
+                    selectedState
+                      ? ['states-layer', 'counties-layer']
+                      : ['states-layer']
                   }
                 >
                   {/* Navigation Control */}
-                  <NavigationControl style={{ right: 10, top: 10 }} showCompass={false} />
+                  <NavigationControl
+                    style={{ right: 10, top: 10 }}
+                    showCompass={false}
+                  />
 
                   {/* States Layer */}
                   {statesGeoJSONWithPercentages && (
-                    <Source id="states" type="geojson" data={statesGeoJSONWithPercentages}>
+                    <Source
+                      id="states"
+                      type="geojson"
+                      data={statesGeoJSONWithPercentages}
+                      key={`states-${JSON.stringify(visitedCounties)}`} // Unique key to force re-render
+                    >
                       <Layer
                         id="states-layer"
                         type="fill"
@@ -559,7 +606,7 @@ export default function YourMapPage() {
                           'fill-color': [
                             'interpolate',
                             ['linear'],
-                            ['get', 'explorationPercentage'],
+                            ['number', ['get', 'explorationPercentage'], 0], // Ensure it's treated as a number
                             0,
                             '#f0f9e8',
                             25,
@@ -586,9 +633,13 @@ export default function YourMapPage() {
                       data={{
                         type: 'FeatureCollection',
                         features: usCountiesGeoJSON.features.filter(
-                          (feature: GeoFeature) => feature.properties?.STATEFP === selectedState
+                          (feature: GeoFeature) =>
+                            feature.properties?.STATEFP === selectedState
                         ),
                       }}
+                      key={`counties-${selectedState}-${JSON.stringify(
+                        visitedCounties[selectedState] || []
+                      )}`} // Unique key to force re-render
                     >
                       <Layer
                         id="counties-layer"
@@ -613,7 +664,10 @@ export default function YourMapPage() {
 
                   {/* Major Cities Markers */}
                   {majorCities
-                    .filter((city) => !selectedState || city.stateId === selectedState)
+                    .filter(
+                      (city) =>
+                        !selectedState || city.stateId === selectedState
+                    )
                     .map((city) => (
                       <MapboxMarker
                         key={city.geonameid}
@@ -752,7 +806,11 @@ export default function YourMapPage() {
 
         {/* Photo Upload Modal */}
         <Transition appear show={isUploadModalOpen} as={Fragment}>
-          <Dialog as="div" className="relative z-50" onClose={() => setIsUploadModalOpen(false)}>
+          <Dialog
+            as="div"
+            className="relative z-50"
+            onClose={() => setIsUploadModalOpen(false)}
+          >
             <Transition.Child
               as={Fragment}
               enter="ease-out duration-300"
