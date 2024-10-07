@@ -5,6 +5,22 @@
 import React from 'react';
 import { toast } from 'react-toastify';
 
+// Mapping of carrier codes to their respective logo URLs.
+// You should populate this mapping with actual URLs of airline logos.
+// For demonstration purposes, placeholder images are used.
+const airlineLogos: { [key: string]: string } = {
+  AA: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/American_Airlines_logo_2013.svg/512px-American_Airlines_logo_2013.svg.png',
+  JL: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Japan_Airlines_logo.svg/512px-Japan_Airlines_logo.svg.png',
+  UA: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/United_Airlines_Logo.svg/512px-United_Airlines_Logo.svg.png',
+  DL: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Delta_Air_Lines_logo.svg/512px-Delta_Air_Lines_logo.svg.png',
+  // Add more carrier codes and their logo URLs here
+};
+
+// Function to retrieve the airline logo based on carrier code
+const getAirlineLogo = (carrierCode: string): string => {
+  return airlineLogos[carrierCode.toUpperCase()] || 'https://via.placeholder.com/50'; // Placeholder image if logo not found
+};
+
 interface FlightCardProps {
   flight: Flight;
 }
@@ -46,21 +62,34 @@ export default function FlightCard({ flight }: FlightCardProps) {
 
   return (
     <div className="flex flex-col md:flex-row bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden m-4 w-full max-w-4xl">
-      <div className="md:w-1/3 bg-green-500 flex flex-col justify-center items-center p-4">
-        <h2 className="text-2xl font-bold text-white">Price: ${flight.price}</h2>
-        <p className="text-white">
-          Airlines: {airlines.length > 0 ? airlines.join(', ') : 'N/A'}
-        </p>
-      </div>
-      <div className="md:w-2/3 p-4">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-          {flight.itineraries.map((itinerary, index) => (
-            <ItineraryDetails key={index} itinerary={itinerary} />
-          ))}
+      {/* Left Section: Price and Airlines */}
+      <div className="md:w-1/3 bg-green-500 flex flex-col justify-center items-center p-6">
+        <h2 className="text-3xl font-bold text-white mb-2">${flight.price}</h2>
+        <div className="flex items-center space-x-2">
+          {airlines.length > 0 ? (
+            airlines.map((carrierCode) => (
+              <img
+                key={carrierCode}
+                src={getAirlineLogo(carrierCode)}
+                alt={`${carrierCode} logo`}
+                className="w-12 h-12 object-contain"
+              />
+            ))
+          ) : (
+            <span className="text-white">N/A</span>
+          )}
         </div>
+      </div>
+
+      {/* Right Section: Itineraries and Details */}
+      <div className="md:w-2/3 p-6">
+        {flight.itineraries.map((itinerary, index) => (
+          <ItineraryDetails key={index} itinerary={itinerary} />
+        ))}
+
         <button
           onClick={handleBook}
-          className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded"
+          className="mt-6 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded transition-colors duration-200"
         >
           Book Now
         </button>
@@ -71,25 +100,37 @@ export default function FlightCard({ flight }: FlightCardProps) {
 
 function ItineraryDetails({ itinerary }: { itinerary: Itinerary }) {
   return (
-    <div className="flex flex-col mb-4 md:mb-0">
-      <h3 className="text-xl font-semibold">Itinerary</h3>
-      <p>
-        <strong>Departure:</strong> {formatDateTime(itinerary.departure_time)} -{' '}
-        {itinerary.segments[0]?.departureAirport || 'N/A'}
+    <div className="mb-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+            Departure: {formatDateTime(itinerary.departure_time)}
+          </p>
+          <p className="text-gray-600 dark:text-gray-400">
+            From: {itinerary.segments[0]?.departureAirport || 'N/A'}
+          </p>
+        </div>
+        <div>
+          <p className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+            Arrival: {formatDateTime(itinerary.arrival_time)}
+          </p>
+          <p className="text-gray-600 dark:text-gray-400">
+            To: {itinerary.segments[itinerary.segments.length - 1]?.arrivalAirport || 'N/A'}
+          </p>
+        </div>
+      </div>
+      <p className="text-gray-700 dark:text-gray-300 mt-2">
+        Duration: {formatDuration(itinerary.duration)}
       </p>
-      <p>
-        <strong>Arrival:</strong> {formatDateTime(itinerary.arrival_time)} -{' '}
-        {itinerary.segments[itinerary.segments.length - 1]?.arrivalAirport || 'N/A'}
-      </p>
-      <p>
-        <strong>Duration:</strong> {formatDuration(itinerary.duration)}
-      </p>
-      <p>
-        <strong>Segments:</strong>
-        <ul className="list-disc list-inside">
+      <p className="text-gray-700 dark:text-gray-300 mt-1">
+        Segments:
+        <ul className="list-disc list-inside mt-1">
           {itinerary.segments.map((segment, idx) => (
             <li key={idx}>
-              {segment.carrierCode} {segment.flightNumber}: {segment.departureAirport} (
+              <strong>
+                {segment.carrierCode} {segment.flightNumber}
+              </strong>
+              : {segment.departureAirport} (
               {formatTime(segment.departureTime)}) → {segment.arrivalAirport} (
               {formatTime(segment.arrivalTime)})
             </li>
@@ -101,17 +142,21 @@ function ItineraryDetails({ itinerary }: { itinerary: Itinerary }) {
 }
 
 function formatDateTime(dateTime: string): string {
+  if (!dateTime || dateTime === 'N/A') return 'N/A';
   const date = new Date(dateTime);
-  return date.toLocaleString();
+  return isNaN(date.getTime()) ? 'N/A' : date.toLocaleString();
 }
 
 function formatTime(dateTime: string): string {
+  if (!dateTime || dateTime === 'N/A') return 'N/A';
   const date = new Date(dateTime);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return isNaN(date.getTime())
+    ? 'N/A'
+    : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDuration(duration: string): string {
-  // Duration is a string like "PT5H30M"
+  if (!duration || duration === 'N/A') return 'N/A';
   const regex = /PT(?:(\d+)H)?(?:(\d+)M)?/;
   const matches = duration.match(regex);
   if (matches) {

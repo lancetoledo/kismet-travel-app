@@ -119,6 +119,11 @@ export default async function handler(
       return res.status(200).json({ flights: [] });
     }
 
+    // Log all flight offers' itineraries for detailed inspection
+    flightResponse.data.data.forEach((offer: any, index: number) => {
+      console.log(`DEBUG: Inspecting flight offer ${index + 1} itineraries:`, JSON.stringify(offer.itineraries, null, 2));
+    });
+
     // Map the response to our Flight interface
     const flights: Flight[] = flightResponse.data.data.map((offer: any, offerIndex: number) => {
       console.log(`DEBUG: Processing offer ${offerIndex + 1}:`, offer.id);
@@ -126,31 +131,40 @@ export default async function handler(
       // Extract unique airlines from all segments
       const airlinesSet = new Set<string>();
       offer.itineraries.forEach((itinerary: any, itineraryIndex: number) => {
-        console.log(`DEBUG: Processing itinerary ${itineraryIndex + 1}`);
+        console.log(`DEBUG: Processing itinerary ${itineraryIndex + 1} of offer ${offerIndex + 1}`);
         if (itinerary.segments && Array.isArray(itinerary.segments)) {
           itinerary.segments.forEach((segment: any, segmentIndex: number) => {
             if (segment.carrierCode) {
               airlinesSet.add(segment.carrierCode);
             } else {
-              console.warn(`WARNING: Missing carrierCode in segment ${segmentIndex + 1} of itinerary ${itineraryIndex + 1}`);
+              console.warn(`WARNING: Missing carrierCode in segment ${segmentIndex + 1} of itinerary ${itineraryIndex + 1} in offer ${offerIndex + 1}`);
             }
           });
         } else {
-          console.warn(`WARNING: Missing or invalid segments in itinerary ${itineraryIndex + 1}`);
+          console.warn(`WARNING: Missing or invalid segments in itinerary ${itineraryIndex + 1} of offer ${offerIndex + 1}`);
         }
       });
 
       // Map itineraries and segments
       const itineraries: Itinerary[] = offer.itineraries.map((itinerary: any, itineraryIndex: number) => {
-        if (!itinerary.departure || !itinerary.departure.at) {
-          console.warn(`WARNING: Missing departure.at in itinerary ${itineraryIndex + 1}`);
+        let departureTime = itinerary.departure?.at;
+        let arrivalTime = itinerary.arrival?.at;
+
+        // If departure.at or arrival.at are missing, extract from segments
+        if (!departureTime && itinerary.segments && itinerary.segments.length > 0) {
+          departureTime = itinerary.segments[0].departure?.at;
+          console.warn(`WARNING: departure.at missing in itinerary ${itineraryIndex + 1} of offer ${offerIndex + 1}, extracted from first segment.`);
         }
-        if (!itinerary.arrival || !itinerary.arrival.at) {
-          console.warn(`WARNING: Missing arrival.at in itinerary ${itineraryIndex + 1}`);
+
+        if (!arrivalTime && itinerary.segments && itinerary.segments.length > 0) {
+          const lastSegment = itinerary.segments[itinerary.segments.length - 1];
+          arrivalTime = lastSegment.arrival?.at;
+          console.warn(`WARNING: arrival.at missing in itinerary ${itineraryIndex + 1} of offer ${offerIndex + 1}, extracted from last segment.`);
         }
+
         return {
-          departure_time: itinerary.departure?.at || 'N/A',
-          arrival_time: itinerary.arrival?.at || 'N/A',
+          departure_time: departureTime || 'N/A',
+          arrival_time: arrivalTime || 'N/A',
           duration: itinerary.duration || 'N/A',
           segments: itinerary.segments?.map((segment: any, segmentIndex: number) => ({
             carrierCode: segment.carrierCode || 'N/A',
@@ -165,14 +179,15 @@ export default async function handler(
 
       return {
         id: offer.id,
-        price: offer.price.total,
+        price: parseFloat(offer.price.total), // Ensure price is a number
         itineraries,
         airlines: Array.from(airlinesSet),
         booking_token: offer.booking_token || 'N/A',
       };
     });
 
-    console.log('DEBUG: Mapped Flights:', flights);
+    // Log the fully mapped flights for verification
+    console.log('DEBUG: Mapped Flights:', JSON.stringify(flights, null, 2));
 
     return res.status(200).json({ flights });
   } catch (error: any) {
