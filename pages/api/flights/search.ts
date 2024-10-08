@@ -93,25 +93,32 @@ export default async function handler(
 
     if (!accessToken) {
       console.error('ERROR: Failed to retrieve access token from Amadeus API.');
-      return res.status(500).json({ error: 'Authentication failed: Unable to retrieve access token.' });
+      return res
+        .status(500)
+        .json({ error: 'Authentication failed: Unable to retrieve access token.' });
     }
 
     // Search for flight offers
     console.log('DEBUG: Searching for flight offers...');
-    const flightResponse = await axios.get('https://test.api.amadeus.com/v2/shopping/flight-offers', {
-      params: {
-        originLocationCode: origin,
-        destinationLocationCode: destination,
-        departureDate: departDate,
-        returnDate: returnDate || undefined,
-        adults: passengers || 1,
-        currencyCode: 'USD',
-        max: 10,
-      },
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+    const flightResponse = await axios.get(
+      'https://test.api.amadeus.com/v2/shopping/flight-offers',
+      {
+        params: {
+          originLocationCode: origin,
+          destinationLocationCode: destination,
+          departureDate: departDate,
+          returnDate: returnDate || undefined,
+          adults: passengers || 1,
+          currencyCode: 'USD',
+          max: 10, // change to whatever is needed
+          // Removed any parameters that limit to best offers
+          // You can add nonStop, includedAirlineCodes, etc., if needed
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
 
     console.log('DEBUG: Flight Search Response Status:', flightResponse.status);
     console.log('DEBUG: Number of Flights Found:', flightResponse.data.data.length);
@@ -122,14 +129,6 @@ export default async function handler(
       return res.status(200).json({ flights: [] });
     }
 
-    // Log all flight offers' itineraries for detailed inspection
-    flightResponse.data.data.forEach((offer: any, index: number) => {
-      console.log(
-        `DEBUG: Inspecting flight offer ${index + 1} itineraries:`,
-        JSON.stringify(offer.itineraries, null, 2)
-      );
-    });
-
     // Map the response to our Flight interface
     const flights: Flight[] = await Promise.all(
       flightResponse.data.data.map(async (offer: any, offerIndex: number) => {
@@ -138,7 +137,9 @@ export default async function handler(
         // Extract unique airlines from all segments
         const airlinesSet = new Set<string>();
         offer.itineraries.forEach((itinerary: any, itineraryIndex: number) => {
-          console.log(`DEBUG: Processing itinerary ${itineraryIndex + 1} of offer ${offerIndex + 1}`);
+          console.log(
+            `DEBUG: Processing itinerary ${itineraryIndex + 1} of offer ${offerIndex + 1}`
+          );
           if (itinerary.segments && Array.isArray(itinerary.segments)) {
             itinerary.segments.forEach((segment: any, segmentIndex: number) => {
               if (segment.carrierCode) {
