@@ -11,6 +11,7 @@
   "dependencies": {
     "@auth/mongodb-adapter": "^3.4.2",
     "@headlessui/react": "^2.1.9",
+    "@heroicons/react": "^1.0.6",
     "@turf/bbox": "^7.1.0",
     "axios": "^1.7.7",
     "csv-parser": "^3.0.0",

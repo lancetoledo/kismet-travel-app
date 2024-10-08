@@ -5,7 +5,7 @@
 import Header from '../components/Header';
 import Banner from '../components/Banner';
 import FlightCard from '../components/FlightCard';
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Added useEffect
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -36,8 +36,19 @@ interface Segment {
 export default function Home() {
   const [flights, setFlights] = useState<Flight[]>([]);
 
+  // Check for cached flights on component mount
+  useEffect(() => {
+    const cachedFlights = localStorage.getItem('cachedFlights');
+    if (cachedFlights) {
+      setFlights(JSON.parse(cachedFlights));
+    }
+  }, []);
+
   const handleSearch = (searchedFlights: Flight[]) => {
     setFlights(searchedFlights);
+
+    // Cache flights in localStorage
+    localStorage.setItem('cachedFlights', JSON.stringify(searchedFlights));
   };
 
   return (
