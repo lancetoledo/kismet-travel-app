@@ -5,22 +5,6 @@
 import React from 'react';
 import { toast } from 'react-toastify';
 
-// Mapping of carrier codes to their respective logo URLs.
-// You should populate this mapping with actual URLs of airline logos.
-// For demonstration purposes, placeholder images are used.
-const airlineLogos: { [key: string]: string } = {
-  AA: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/American_Airlines_logo_2013.svg/512px-American_Airlines_logo_2013.svg.png',
-  JL: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Japan_Airlines_logo.svg/512px-Japan_Airlines_logo.svg.png',
-  UA: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/United_Airlines_Logo.svg/512px-United_Airlines_Logo.svg.png',
-  DL: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Delta_Air_Lines_logo.svg/512px-Delta_Air_Lines_logo.svg.png',
-  // Add more carrier codes and their logo URLs here
-};
-
-// Function to retrieve the airline logo based on carrier code
-const getAirlineLogo = (carrierCode: string): string => {
-  return airlineLogos[carrierCode.toUpperCase()] || 'https://via.placeholder.com/50'; // Placeholder image if logo not found
-};
-
 interface FlightCardProps {
   flight: Flight;
 }
@@ -47,104 +31,112 @@ interface Segment {
   departureTime: string;
   arrivalAirport: string;
   arrivalTime: string;
+  logoUrl: string; // Logo URL included
 }
 
 export default function FlightCard({ flight }: FlightCardProps) {
   const handleBook = () => {
-    // Redirect to booking URL or handle booking logic
-    // Since Amadeus may not provide direct booking URLs, you might need to handle this differently
-    // For demonstration, we'll just show a toast notification
+    // Implement booking logic or redirect
     toast.info('Booking functionality is not implemented yet.');
   };
 
-  // Safeguard: Ensure airlines is an array
-  const airlines = Array.isArray(flight.airlines) ? flight.airlines : [];
+  // For simplicity, we'll display only the first itinerary
+  const itinerary = flight.itineraries[0];
+  const segments = itinerary.segments;
+
+  // Get the first segment for departure details
+  const firstSegment = segments[0];
+  // Get the last segment for arrival details
+  const lastSegment = segments[segments.length - 1];
+
+  // Determine if the flight is direct
+  const isDirect = segments.length === 1;
+
+  // Get the carrier logo from the first segment
+  const carrierLogo = firstSegment.logoUrl || 'https://via.placeholder.com/50';
 
   return (
     <div className="flex flex-col md:flex-row bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden m-4 w-full max-w-4xl">
-      {/* Left Section: Price and Airlines */}
-      <div className="md:w-1/3 bg-green-500 flex flex-col justify-center items-center p-6">
-        <h2 className="text-3xl font-bold text-white mb-2">${flight.price}</h2>
-        <div className="flex items-center space-x-2">
-          {airlines.length > 0 ? (
-            airlines.map((carrierCode) => (
-              <img
-                key={carrierCode}
-                src={getAirlineLogo(carrierCode)}
-                alt={`${carrierCode} logo`}
-                className="w-12 h-12 object-contain"
-              />
-            ))
-          ) : (
-            <span className="text-white">N/A</span>
-          )}
+      {/* Left Section */}
+      <div className="flex flex-col md:flex-row items-center md:items-stretch flex-grow p-4">
+        {/* Carrier Logo */}
+        <div className="flex-shrink-0 mb-4 md:mb-0 md:mr-4">
+          <img
+            src={carrierLogo}
+            alt={`${firstSegment.carrierCode} logo`}
+            className="w-12 h-12 object-contain"
+          />
+        </div>
+
+        {/* Flight Details */}
+        <div className="flex flex-col md:flex-row md:items-center flex-grow">
+          {/* Departure */}
+          <div className="flex flex-col items-center md:items-start md:w-1/3">
+            <span className="text-xl font-semibold text-gray-800 dark:text-gray-200">
+              {formatTime(firstSegment.departureTime)}
+            </span>
+            <span className="text-gray-600 dark:text-gray-400">
+              {firstSegment.departureAirport}
+            </span>
+          </div>
+
+          {/* Flight Duration and Line */}
+          <div className="flex flex-col items-center md:w-1/3">
+            <span className="text-gray-600 dark:text-gray-400">
+              {formatDuration(itinerary.duration)}
+            </span>
+            <div className="flex items-center mt-2 mb-2 w-full">
+              <div className="h-px bg-gray-400 flex-grow"></div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 text-gray-500 mx-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                transform="rotate(90)"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 10h18l-6 6m0 0l-6-6m6 6V4"
+                />
+              </svg>
+              <div className="h-px bg-gray-400 flex-grow"></div>
+            </div>
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              {isDirect ? 'Direct' : `${segments.length - 1} stop(s)`}
+            </span>
+          </div>
+
+          {/* Arrival */}
+          <div className="flex flex-col items-center md:items-end md:w-1/3">
+            <span className="text-xl font-semibold text-gray-800 dark:text-gray-200">
+              {formatTime(lastSegment.arrivalTime)}
+            </span>
+            <span className="text-gray-600 dark:text-gray-400">
+              {lastSegment.arrivalAirport}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Right Section: Itineraries and Details */}
-      <div className="md:w-2/3 p-6">
-        {flight.itineraries.map((itinerary, index) => (
-          <ItineraryDetails key={index} itinerary={itinerary} />
-        ))}
-
+      {/* Right Section */}
+      <div className="flex flex-col justify-center items-center bg-gray-100 dark:bg-gray-700 p-4 md:w-1/3">
+        {/* Price */}
+        <span className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">
+          ${flight.price.toFixed(2)}
+        </span>
+        {/* Book Button */}
         <button
           onClick={handleBook}
-          className="mt-6 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded transition-colors duration-200"
+          className="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-6 rounded transition-colors duration-200"
         >
-          Book Now
+          Book
         </button>
       </div>
     </div>
   );
-}
-
-function ItineraryDetails({ itinerary }: { itinerary: Itinerary }) {
-  return (
-    <div className="mb-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-            Departure: {formatDateTime(itinerary.departure_time)}
-          </p>
-          <p className="text-gray-600 dark:text-gray-400">
-            From: {itinerary.segments[0]?.departureAirport || 'N/A'}
-          </p>
-        </div>
-        <div>
-          <p className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-            Arrival: {formatDateTime(itinerary.arrival_time)}
-          </p>
-          <p className="text-gray-600 dark:text-gray-400">
-            To: {itinerary.segments[itinerary.segments.length - 1]?.arrivalAirport || 'N/A'}
-          </p>
-        </div>
-      </div>
-      <p className="text-gray-700 dark:text-gray-300 mt-2">
-        Duration: {formatDuration(itinerary.duration)}
-      </p>
-      <p className="text-gray-700 dark:text-gray-300 mt-1">
-        Segments:
-        <ul className="list-disc list-inside mt-1">
-          {itinerary.segments.map((segment, idx) => (
-            <li key={idx}>
-              <strong>
-                {segment.carrierCode} {segment.flightNumber}
-              </strong>
-              : {segment.departureAirport} (
-              {formatTime(segment.departureTime)}) → {segment.arrivalAirport} (
-              {formatTime(segment.arrivalTime)})
-            </li>
-          ))}
-        </ul>
-      </p>
-    </div>
-  );
-}
-
-function formatDateTime(dateTime: string): string {
-  if (!dateTime || dateTime === 'N/A') return 'N/A';
-  const date = new Date(dateTime);
-  return isNaN(date.getTime()) ? 'N/A' : date.toLocaleString();
 }
 
 function formatTime(dateTime: string): string {
