@@ -26,8 +26,6 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 // Import data files
-import countyNames from '../../data/countyNames.json';
-import stateNames from '../../data/stateNames.json';
 import majorCitiesData from '../../data/majorCities.json';
 
 // Import GeoJSON data
@@ -62,6 +60,7 @@ interface Photo {
 interface GeoFeatureProperties {
   STATEFP?: string;
   GEOID?: string;
+  NAME?: string;
   explorationPercentage?: number;
 }
 
@@ -108,11 +107,24 @@ export default function YourMapPage() {
   const { data: sessionData } = useSession();
   const mapRef = useRef<MapRef>(null);
 
-  // Map state FIPS codes to state names using stateNames.json
+  // Map state FIPS codes to state names using properties from usStatesGeoJSON
   const stateFIPSToName: { [key: string]: string } = {};
+  usStatesGeoJSON.features.forEach((feature: GeoFeature) => {
+    const stateId = feature.properties?.STATEFP;
+    const stateName = feature.properties?.NAME;
+    if (stateId && stateName) {
+      stateFIPSToName[stateId] = stateName;
+    }
+  });
 
-  Object.entries(stateNames).forEach(([stateFIPS, stateName]) => {
-    stateFIPSToName[stateFIPS.padStart(2, '0')] = stateName as string;
+  // Map county GEOIDs to names using properties from usCountiesGeoJSON
+  const countyGEOIDToName: { [key: string]: string } = {};
+  usCountiesGeoJSON.features.forEach((feature: GeoFeature) => {
+    const countyId = feature.properties?.GEOID;
+    const countyName = feature.properties?.NAME;
+    if (countyId && countyName) {
+      countyGEOIDToName[countyId] = countyName;
+    }
   });
 
   // Filter major cities to include only those with population > 100,000
@@ -229,7 +241,8 @@ export default function YourMapPage() {
 
   // Handler to toggle visited state
   const toggleVisitedState = (stateId: string) => {
-    stateId = stateId.padStart(2, '0');
+    console.log('Clicked State ID:', stateId);
+    console.log('Mapped State Name:', stateFIPSToName[stateId]);
     let updatedStates: string[];
     let updatedCounties: { [key: string]: string[] } = { ...visitedCounties };
 
@@ -279,7 +292,7 @@ export default function YourMapPage() {
 
   // Handler to toggle visited county
   const toggleVisitedCounty = (countyId: string, stateId: string) => {
-    stateId = stateId.padStart(2, '0');
+    const countyName = countyGEOIDToName[countyId];
     const stateCounties = visitedCounties[stateId] || [];
     let updatedCounties: string[];
     let updatedStates: string[] = [...visitedStates];
@@ -287,7 +300,7 @@ export default function YourMapPage() {
     if (stateCounties.includes(countyId)) {
       // Remove county from visitedCounties
       updatedCounties = stateCounties.filter((id) => id !== countyId);
-      toast.info(`County ${countyNames[countyId] || countyId} marked as not visited.`);
+      toast.info(`County ${countyName || countyId} marked as not visited.`);
 
       // If no counties remain visited in the state, remove the state from visitedStates
       if (updatedCounties.length === 0) {
@@ -323,7 +336,7 @@ export default function YourMapPage() {
     } else {
       // Add county to visitedCounties
       updatedCounties = [...stateCounties, countyId];
-      toast.success(`County ${countyNames[countyId] || countyId} marked as visited.`);
+      toast.success(`County ${countyName || countyId} marked as visited.`);
 
       // Ensure the state is in visitedStates
       if (!visitedStates.includes(stateId)) {
@@ -357,7 +370,6 @@ export default function YourMapPage() {
 
   // Calculate the percentage of explored counties in a state
   const calculateStateExploredPercentage = (stateId: string): string => {
-    stateId = stateId.padStart(2, '0');
     const stateCounties = usCountiesGeoJSON.features.filter(
       (county: GeoFeature) => county.properties?.STATEFP === stateId
     );
@@ -380,11 +392,11 @@ export default function YourMapPage() {
 
       updatedStatesGeoJSON.features = updatedStatesGeoJSON.features
         .filter((stateFeature) => {
-          const stateId = stateFeature.properties?.STATEFP?.padStart(2, '0');
+          const stateId = stateFeature.properties?.STATEFP;
           return stateId && stateFIPSToName[stateId];
         })
         .map((stateFeature) => {
-          const stateId = stateFeature.properties?.STATEFP?.padStart(2, '0');
+          const stateId = stateFeature.properties?.STATEFP;
           if (!stateId) {
             console.warn('State feature missing STATEFP:', stateFeature);
             return stateFeature;
@@ -402,10 +414,6 @@ export default function YourMapPage() {
                   ((visitedCountiesInState / totalCountiesInState) * 100).toFixed(2)
                 )
               : 0;
-
-          console.log(
-            `State ${stateId} (${stateFIPSToName[stateId]}): ${explorationPercentage}% explored`
-          );
 
           return {
             ...stateFeature,
@@ -486,7 +494,7 @@ export default function YourMapPage() {
       }
     } else if (feature.layer.id === 'counties-layer') {
       const countyId = feature.properties?.GEOID;
-      const stateId = countyId?.slice(0, 2);
+      const stateId = feature.properties?.STATEFP;
       if (countyId && stateId) {
         toggleVisitedCounty(countyId, stateId);
       }
