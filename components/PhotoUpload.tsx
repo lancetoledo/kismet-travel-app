@@ -1,15 +1,22 @@
 // File: /components/PhotoUpload.tsx
 
-import React, { useState, ChangeEvent } from 'react';
+import React, { useState, ChangeEvent, Fragment } from 'react';
 import EXIF from 'exif-js';
 import axios from 'axios';
+import { Dialog, Transition } from '@headlessui/react';
 import { ToastContainer, toast } from 'react-toastify';
 
 interface PhotoUploadProps {
+  isOpen: boolean;
+  onClose: () => void;
   onUploadSuccess?: () => void; // Optional callback after successful upload
 }
 
-const PhotoUpload: React.FC<PhotoUploadProps> = ({ onUploadSuccess }) => {
+const PhotoUpload: React.FC<PhotoUploadProps> = ({
+  isOpen,
+  onClose,
+  onUploadSuccess,
+}) => {
   // State variables with explicit types
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
@@ -64,13 +71,12 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ onUploadSuccess }) => {
     return dd;
   };
 
-  // Handle manual input of latitude
+  // Handle manual input of latitude and longitude
   const handleLatitudeChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(event.target.value);
     setLatitude(isNaN(value) ? null : value);
   };
 
-  // Handle manual input of longitude
   const handleLongitudeChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(event.target.value);
     setLongitude(isNaN(value) ? null : value);
@@ -118,6 +124,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ onUploadSuccess }) => {
         setLatitude(null);
         setLongitude(null);
         if (onUploadSuccess) onUploadSuccess();
+        onClose();
       } else {
         setUploadError(response.data.error || 'Failed to upload photo.');
       }
@@ -130,79 +137,127 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ onUploadSuccess }) => {
   };
 
   return (
-    <div className="bg-white shadow rounded-lg p-6 mb-8 dark:bg-gray-800">
-      <h2 className="text-2xl font-semibold text-green-700 mb-4 dark:text-green-300">
-        Upload a Photo
-      </h2>
-      <div className="mb-4">
-        <label className="block text-gray-700 dark:text-gray-200 mb-2">
-          Select Photo:
-        </label>
-        <input type="file" accept="image/*" onChange={handleFileChange} />
-      </div>
+    <Transition appear show={isOpen} as={Fragment}>
+      <Dialog as="div" className="relative z-50" onClose={onClose}>
+        <Transition.Child
+          as={Fragment}
+          enter="ease-out duration-300"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="ease-in duration-200"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <div
+            className="fixed inset-0 bg-black bg-opacity-25 dark:bg-opacity-75"
+            aria-hidden="true"
+          />
+        </Transition.Child>
 
-      {previewSrc && (
-        <div className="mb-4">
-          <img src={previewSrc} alt="Preview" className="w-64 h-64 object-cover rounded" />
+        <div className="fixed inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-full px-4 text-center">
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0 scale-95"
+              enterTo="opacity-100 scale-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100 scale-100"
+              leaveTo="opacity-0 scale-95"
+            >
+              <Dialog.Panel className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full p-6">
+                <button
+                  onClick={onClose}
+                  className="absolute top-3 right-3 text-gray-800 dark:text-gray-200 hover:text-red-500"
+                >
+                  &times;
+                </button>
+                <Dialog.Title
+                  as="h2"
+                  className="text-2xl font-bold mb-4 text-gray-800 dark:text-gray-200"
+                >
+                  Upload a Photo
+                </Dialog.Title>
+
+                {/* Photo Upload Form */}
+                <div className="mb-4">
+                  <label className="block text-gray-700 dark:text-gray-200 mb-2">
+                    Select Photo:
+                  </label>
+                  <input type="file" accept="image/*" onChange={handleFileChange} />
+                </div>
+
+                {previewSrc && (
+                  <div className="mb-4">
+                    <img
+                      src={previewSrc}
+                      alt="Preview"
+                      className="w-64 h-64 object-cover rounded"
+                    />
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <label className="block text-gray-700 dark:text-gray-200 mb-2">
+                    Description:
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={handleDescriptionChange}
+                    className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
+                    placeholder="Enter a description for your photo..."
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-gray-700 dark:text-gray-200 mb-2">
+                    Latitude:
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={latitude !== null ? latitude : ''}
+                    onChange={handleLatitudeChange}
+                    className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
+                    placeholder="e.g., 37.7749"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-gray-700 dark:text-gray-200 mb-2">
+                    Longitude:
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={longitude !== null ? longitude : ''}
+                    onChange={handleLongitudeChange}
+                    className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
+                    placeholder="e.g., -122.4194"
+                  />
+                </div>
+
+                {uploadError && (
+                  <div className="mb-4 text-red-600 dark:text-red-400">
+                    {uploadError}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleUpload}
+                  disabled={isUploading}
+                  className={`w-full bg-green-700 text-white py-2 px-4 rounded hover:bg-green-800 transition-colors duration-200 ${
+                    isUploading ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {isUploading ? 'Uploading...' : 'Upload Photo'}
+                </button>
+              </Dialog.Panel>
+            </Transition.Child>
+          </div>
         </div>
-      )}
-
-      <div className="mb-4">
-        <label className="block text-gray-700 dark:text-gray-200 mb-2">
-          Description:
-        </label>
-        <textarea
-          value={description}
-          onChange={handleDescriptionChange}
-          className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
-          placeholder="Enter a description for your photo..."
-        />
-      </div>
-
-      <div className="mb-4">
-        <label className="block text-gray-700 dark:text-gray-200 mb-2">
-          Latitude:
-        </label>
-        <input
-          type="number"
-          step="any"
-          value={latitude !== null ? latitude : ''}
-          onChange={handleLatitudeChange}
-          className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
-          placeholder="e.g., 37.7749"
-        />
-      </div>
-
-      <div className="mb-4">
-        <label className="block text-gray-700 dark:text-gray-200 mb-2">
-          Longitude:
-        </label>
-        <input
-          type="number"
-          step="any"
-          value={longitude !== null ? longitude : ''}
-          onChange={handleLongitudeChange}
-          className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
-          placeholder="e.g., -122.4194"
-        />
-      </div>
-
-      {uploadError && (
-        <div className="mb-4 text-red-600 dark:text-red-400">
-          {uploadError}
-        </div>
-      )}
-
-      <button
-        onClick={handleUpload}
-        disabled={isUploading}
-        className={`w-full bg-green-700 text-white py-2 px-4 rounded hover:bg-green-800 transition-colors duration-200 ${
-          isUploading ? 'opacity-50 cursor-not-allowed' : ''
-        }`}
-      >
-        {isUploading ? 'Uploading...' : 'Upload Photo'}
-      </button>
-    </div>
+      </Dialog>
+    </Transition>
   );
 };
 
