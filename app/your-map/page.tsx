@@ -37,8 +37,8 @@ import Header from '../../components/Header';
 import PhotoUpload from '../../components/PhotoUpload';
 
 // Import icons
-import { FiMoon, FiSun, FiUpload } from 'react-icons/fi'; // For dark mode and upload icons
-import { Dialog, Transition } from '@headlessui/react'; // Use Dialog instead of Modal
+import { FiMoon, FiSun, FiUpload } from 'react-icons/fi';
+import { Dialog, Transition } from '@headlessui/react';
 
 // Import Turf.js for bbox calculation
 import bbox from '@turf/bbox';
@@ -126,6 +126,14 @@ export default function YourMapPage() {
       countyGEOIDToName[countyId] = countyName;
     }
   });
+
+  // Hover state variables
+  const [hoveredStateId, setHoveredStateId] = useState<string | null>(null);
+  const [hoveredCountyId, setHoveredCountyId] = useState<string | null>(null);
+
+  // Tooltip state
+  const [tooltipContent, setTooltipContent] = useState<string | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Filter major cities to include only those with population > 100,000
   const majorCities = majorCitiesData.filter(
@@ -416,6 +424,7 @@ export default function YourMapPage() {
 
           return {
             ...stateFeature,
+            id: stateId,
             properties: {
               ...stateFeature.properties,
               explorationPercentage,
@@ -433,7 +442,7 @@ export default function YourMapPage() {
     setViewport({
       latitude: 38,
       longitude: -97,
-      zoom: 3,
+      zoom: 4,
       bearing: 0,
       pitch: 0,
     });
@@ -448,27 +457,18 @@ export default function YourMapPage() {
   // Click threshold in pixels
   const clickThreshold = 5;
 
-  const handleMouseDown = (event: any) => {
+  const handlePointerDown = (event: any) => {
     setIsDragging(false);
     setStartPos({ x: event.point.x, y: event.point.y });
   };
 
-  const handleMouseMove = (event: any) => {
+  const handlePointerMove = (event: any) => {
     if (!startPos) return;
     const dx = event.point.x - startPos.x;
     const dy = event.point.y - startPos.y;
     if (Math.abs(dx) > clickThreshold || Math.abs(dy) > clickThreshold) {
       setIsDragging(true);
     }
-  };
-
-  const handleMouseUp = (event: any) => {
-    if (!isDragging && startPos) {
-      // It's a click
-      handleMapClick(event);
-    }
-    setStartPos(null);
-    setIsDragging(false);
   };
 
   // Handle Map Clicks for Layers
@@ -516,6 +516,66 @@ export default function YourMapPage() {
         toggleVisitedCounty(countyId, stateId);
       }
     }
+  };
+
+  // Hover Effects
+  const onStateMouseEnter = (e: any) => {
+    if (e.features.length > 0) {
+      if (hoveredStateId) {
+        mapRef.current?.setFeatureState(
+          { source: 'states', id: hoveredStateId },
+          { hover: false }
+        );
+      }
+      const id = e.features[0].properties.STATEFP;
+      setHoveredStateId(id);
+      mapRef.current?.setFeatureState(
+        { source: 'states', id },
+        { hover: true }
+      );
+    }
+  };
+
+  const onStateMouseLeave = () => {
+    if (hoveredStateId) {
+      mapRef.current?.setFeatureState(
+        { source: 'states', id: hoveredStateId },
+        { hover: false }
+      );
+    }
+    setHoveredStateId(null);
+  };
+
+  const onCountyMouseEnter = (e: any) => {
+    if (e.features.length > 0) {
+      if (hoveredCountyId) {
+        mapRef.current?.setFeatureState(
+          { source: 'counties', id: hoveredCountyId },
+          { hover: false }
+        );
+      }
+      const id = e.features[0].properties.GEOID;
+      setHoveredCountyId(id);
+      mapRef.current?.setFeatureState(
+        { source: 'counties', id },
+        { hover: true }
+      );
+      const countyName = e.features[0].properties.NAME;
+      setTooltipContent(countyName);
+      setTooltipPosition({ x: e.point.x, y: e.point.y });
+    }
+  };
+
+  const onCountyMouseLeave = () => {
+    if (hoveredCountyId) {
+      mapRef.current?.setFeatureState(
+        { source: 'counties', id: hoveredCountyId },
+        { hover: false }
+      );
+    }
+    setHoveredCountyId(null);
+    setTooltipContent(null);
+    setTooltipPosition(null);
   };
 
   // Loading and error states
@@ -601,9 +661,52 @@ export default function YourMapPage() {
                   }
                   mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
                   onMove={(evt) => setViewport(evt.viewState)}
-                  onMouseDown={handleMouseDown}
-                  onMouseUp={handleMouseUp}
-                  onMouseMove={handleMouseMove}
+                  onMouseDown={handlePointerDown}
+                  onMouseMove={(event) => {
+                    handlePointerMove(event);
+                    if (!mapRef.current) return;
+
+                    const features = mapRef.current.queryRenderedFeatures(event.point, {
+                      layers: selectedState ? ['counties-layer'] : ['states-layer'],
+                    });
+
+                    if (features && features.length > 0) {
+                      if (selectedState) {
+                        onCountyMouseEnter({ features, point: event.point });
+                      } else {
+                        onStateMouseEnter({ features, point: event.point });
+                      }
+                    } else {
+                      if (selectedState) {
+                        onCountyMouseLeave();
+                      } else {
+                        onStateMouseLeave();
+                      }
+                    }
+                  }}
+                  onMouseUp={(event) => {
+                    if (!isDragging) {
+                      handleMapClick(event);
+                    }
+                    setIsDragging(false);
+                    setStartPos(null);
+                  }}
+                  onMouseLeave={() => {
+                    if (selectedState) {
+                      onCountyMouseLeave();
+                    } else {
+                      onStateMouseLeave();
+                    }
+                  }}
+                  onTouchStart={handlePointerDown}
+                  onTouchMove={handlePointerMove}
+                  onTouchEnd={(event) => {
+                    if (!isDragging) {
+                      handleMapClick(event);
+                    }
+                    setIsDragging(false);
+                    setStartPos(null);
+                  }}
                   interactiveLayerIds={['states-layer', 'counties-layer']}
                 >
                   {/* Navigation Control */}
@@ -617,27 +720,39 @@ export default function YourMapPage() {
                     <Source
                       id="states"
                       type="geojson"
-                      data={statesGeoJSONWithPercentages}
-                      key={`states-${JSON.stringify(visitedCounties)}`} // Unique key to force re-render
+                      data={{
+                        ...statesGeoJSONWithPercentages,
+                        features: statesGeoJSONWithPercentages.features.map(
+                          (feature: GeoFeature) => ({
+                            ...feature,
+                            id: feature.properties?.STATEFP,
+                          })
+                        ),
+                      }}
                     >
                       <Layer
                         id="states-layer"
                         type="fill"
                         paint={{
                           'fill-color': [
-                            'interpolate',
-                            ['linear'],
-                            ['number', ['get', 'explorationPercentage'], 0], // Ensure it's treated as a number
-                            0,
-                            '#f0f9e8',
-                            25,
-                            '#ccebc5',
-                            50,
-                            '#7bccc4',
-                            75,
-                            '#2b8cbe',
-                            100,
-                            '#084081',
+                            'case',
+                            ['boolean', ['feature-state', 'hover'], false],
+                            '#FFD700', // Gold color when hovered
+                            [
+                              'interpolate',
+                              ['linear'],
+                              ['number', ['get', 'explorationPercentage'], 0],
+                              0,
+                              '#f0f9e8',
+                              25,
+                              '#ccebc5',
+                              50,
+                              '#7bccc4',
+                              75,
+                              '#2b8cbe',
+                              100,
+                              '#084081',
+                            ],
                           ],
                           'fill-outline-color': '#FFFFFF',
                           'fill-opacity': 0.8,
@@ -653,14 +768,16 @@ export default function YourMapPage() {
                       type="geojson"
                       data={{
                         type: 'FeatureCollection',
-                        features: usCountiesGeoJSON.features.filter(
-                          (feature: GeoFeature) =>
-                            feature.properties?.STATEFP === selectedState
-                        ),
+                        features: usCountiesGeoJSON.features
+                          .filter(
+                            (feature: GeoFeature) =>
+                              feature.properties?.STATEFP === selectedState
+                          )
+                          .map((feature: GeoFeature) => ({
+                            ...feature,
+                            id: feature.properties?.GEOID,
+                          })),
                       }}
-                      key={`counties-${selectedState}-${JSON.stringify(
-                        visitedCounties[selectedState] || []
-                      )}`} // Unique key to force re-render
                     >
                       <Layer
                         id="counties-layer"
@@ -668,13 +785,18 @@ export default function YourMapPage() {
                         paint={{
                           'fill-color': [
                             'case',
+                            ['boolean', ['feature-state', 'hover'], false],
+                            '#FFD700', // Gold color when hovered
                             [
-                              'in',
-                              ['get', 'GEOID'],
-                              ['literal', visitedCounties[selectedState] || []],
+                              'case',
+                              [
+                                'in',
+                                ['get', 'GEOID'],
+                                ['literal', visitedCounties[selectedState] || []],
+                              ],
+                              VISITED_COLOR, // Visited county color
+                              UNVISITED_COLOR, // Unvisited county color
                             ],
-                            VISITED_COLOR, // Visited county color
-                            UNVISITED_COLOR, // Unvisited county color
                           ],
                           'fill-outline-color': '#FFFFFF',
                           'fill-opacity': 0.6,
@@ -751,6 +873,43 @@ export default function YourMapPage() {
                       </div>
                     </Popup>
                   )}
+
+                  {/* Tooltip for County Names */}
+                  {tooltipContent && tooltipPosition && (
+                    <div
+                      className="tooltip"
+                      style={{
+                        position: 'absolute',
+                        left: tooltipPosition.x,
+                        top: tooltipPosition.y,
+                        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                        color: '#fff',
+                        padding: '5px',
+                        borderRadius: '3px',
+                        pointerEvents: 'none',
+                        transform: 'translate(-50%, -100%)',
+                      }}
+                    >
+                      {tooltipContent}
+                    </div>
+                  )}
+
+                  {/* Adjust label visibility */}
+                  <Layer
+                    id="settlement-label"
+                    source="composite"
+                    sourceLayer="settlement"
+                    type="symbol"
+                    layout={{
+                      'text-field': ['get', 'name_en'],
+                      'text-size': 12,
+                    }}
+                    paint={{
+                      'text-color': '#000000',
+                      'text-halo-color': '#FFFFFF',
+                      'text-halo-width': 1,
+                    }}
+                  />
                 </ReactMapGL>
 
                 {/* Map Legend */}
