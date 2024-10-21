@@ -20,6 +20,7 @@ const TopControls: React.FC<TopControlsProps> = ({
       <button
         onClick={openUploadModal}
         className="text-gray-800 dark:text-gray-200 hover:text-green-500 dark:hover:text-green-400"
+        aria-label="Upload Photo"
       >
         <FiUpload size={24} />
       </button>
@@ -28,6 +29,7 @@ const TopControls: React.FC<TopControlsProps> = ({
       <button
         onClick={toggleDarkMode}
         className="text-gray-800 dark:text-gray-200 hover:text-green-500 dark:hover:text-green-400"
+        aria-label="Toggle Dark Mode"
       >
         {isDarkMode ? <FiSun size={24} /> : <FiMoon size={24} />}
       </button>

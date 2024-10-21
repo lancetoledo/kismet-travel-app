@@ -4,13 +4,16 @@ import React, { useState, ChangeEvent, Fragment } from 'react';
 import EXIF from 'exif-js';
 import axios from 'axios';
 import { Dialog, Transition } from '@headlessui/react';
-import { ToastContainer, toast } from 'react-toastify';
+import { LoadScript, StandaloneSearchBox } from '@react-google-maps/api';
+import { toast } from 'react-toastify';
 
 interface PhotoUploadProps {
   isOpen: boolean;
   onClose: () => void;
   onUploadSuccess?: () => void; // Optional callback after successful upload
 }
+
+const libraries = ['places'];
 
 const PhotoUpload: React.FC<PhotoUploadProps> = ({
   isOpen,
@@ -23,8 +26,11 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
   const [description, setDescription] = useState<string>('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const [location, setLocation] = useState<{ name: string; lat: number; lng: number } | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const searchBoxRef = React.useRef<any>(null);
 
   // Handle file selection
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -87,6 +93,22 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
     setDescription(event.target.value);
   };
 
+  // Handle place selection from the autocomplete search box
+  const handlePlaceChanged = () => {
+    const places = searchBoxRef.current.getPlaces();
+    if (places && places.length > 0) {
+      const place = places[0];
+      if (place.geometry) {
+        const name = place.formatted_address || place.name;
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        setLocation({ name, lat, lng });
+        setLatitude(lat);
+        setLongitude(lng);
+      }
+    }
+  };
+
   // Handle photo upload
   const handleUpload = async () => {
     if (!selectedFile) {
@@ -95,7 +117,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
     }
 
     if (latitude === null || longitude === null) {
-      setUploadError('Please provide valid latitude and longitude.');
+      setUploadError('Please provide a location or select a photo with location data.');
       return;
     }
 
@@ -108,6 +130,9 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
       formData.append('description', description);
       formData.append('latitude', latitude.toString());
       formData.append('longitude', longitude.toString());
+      if (location && location.name) {
+        formData.append('locationName', location.name);
+      }
 
       const response = await axios.post('/api/photos/upload', formData, {
         headers: {
@@ -123,6 +148,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
         setDescription('');
         setLatitude(null);
         setLongitude(null);
+        setLocation(null);
         if (onUploadSuccess) onUploadSuccess();
         onClose();
       } else {
@@ -184,7 +210,12 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
                   <label className="block text-gray-700 dark:text-gray-200 mb-2">
                     Select Photo:
                   </label>
-                  <input type="file" accept="image/*" onChange={handleFileChange} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
+                  />
                 </div>
 
                 {previewSrc && (
@@ -209,9 +240,37 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
                   />
                 </div>
 
+                {/* Location Search */}
                 <div className="mb-4">
                   <label className="block text-gray-700 dark:text-gray-200 mb-2">
-                    Latitude:
+                    Location (optional):
+                  </label>
+                  <LoadScript
+                    googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY || ''}
+                    libraries={libraries}
+                  >
+                    <StandaloneSearchBox
+                      onLoad={(ref) => (searchBoxRef.current = ref)}
+                      onPlacesChanged={handlePlaceChanged}
+                    >
+                      <input
+                        type="text"
+                        placeholder="Search for a location"
+                        className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
+                      />
+                    </StandaloneSearchBox>
+                  </LoadScript>
+                  {location && (
+                    <div className="mt-2 text-green-700 dark:text-green-300">
+                      Selected Location: {location.name}
+                    </div>
+                  )}
+                </div>
+
+                {/* Latitude and Longitude Inputs */}
+                <div className="mb-4">
+                  <label className="block text-gray-700 dark:text-gray-200 mb-2">
+                    Latitude (auto-detected from photo or location search):
                   </label>
                   <input
                     type="number"
@@ -225,7 +284,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
 
                 <div className="mb-4">
                   <label className="block text-gray-700 dark:text-gray-200 mb-2">
-                    Longitude:
+                    Longitude (auto-detected from photo or location search):
                   </label>
                   <input
                     type="number"

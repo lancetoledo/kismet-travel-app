@@ -9,6 +9,7 @@ export interface IPhoto extends Document {
   location: {
     type: string;
     coordinates: [number, number];
+    name?: string; // Optional location name
   };
   description: string;
   createdAt: Date;
@@ -20,7 +21,8 @@ const PhotoSchema: Schema = new Schema({
   thumbnailUrl: { type: String, required: true },
   location: {
     type: { type: String, enum: ['Point'], required: true },
-    coordinates: { type: [Number], required: true },
+    coordinates: { type: [Number], required: true }, // [longitude, latitude]
+    name: { type: String }, // Optional
   },
   description: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },

@@ -12,6 +12,7 @@ import ReactMapGL, {
 } from 'react-map-gl';
 import bbox from '@turf/bbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { toast } from 'react-toastify';
 
 // Import data files
 import majorCitiesData from '../data/majorCities.json';
@@ -29,6 +30,7 @@ interface Photo {
   location: {
     type: string;
     coordinates: [number, number]; // [longitude, latitude]
+    name?: string; // Optional location name
   };
   description: string;
   createdAt: string;
@@ -49,6 +51,8 @@ interface MapComponentProps {
   isDarkMode: boolean;
   visitedStates: string[];
   visitedCounties: { [stateId: string]: string[] };
+  setVisitedStates: React.Dispatch<React.SetStateAction<string[]>>;
+  setVisitedCounties: React.Dispatch<React.SetStateAction<{ [stateId: string]: string[] }>>;
   selectedState: string | null;
   setSelectedState: React.Dispatch<React.SetStateAction<string | null>>;
   userPhotos: Photo[];
@@ -56,9 +60,16 @@ interface MapComponentProps {
   setSelectedPhoto: React.Dispatch<React.SetStateAction<Photo | null>>;
   stateFIPSToName: { [key: string]: string };
   countyGEOIDToName: { [key: string]: string };
-  toggleVisitedCounty: (countyId: string, stateId: string) => void;
-  toggleVisitedState: (stateId: string) => void;
+  usCountiesGeoJSON: any;
+  updateVisitedLocations: (
+    updatedStates: string[],
+    updatedCounties: { [key: string]: string[] },
+    newUsExplored: number
+  ) => void;
 }
+
+const VISITED_COLOR = '#08519c'; // Dark blue for visited counties
+const UNVISITED_COLOR = '#bdd7e7'; // Light blue for unvisited counties
 
 const MapComponent: React.FC<MapComponentProps> = ({
   viewport,
@@ -66,6 +77,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
   isDarkMode,
   visitedStates,
   visitedCounties,
+  setVisitedStates,
+  setVisitedCounties,
   selectedState,
   setSelectedState,
   userPhotos,
@@ -73,16 +86,14 @@ const MapComponent: React.FC<MapComponentProps> = ({
   setSelectedPhoto,
   stateFIPSToName,
   countyGEOIDToName,
-  toggleVisitedCounty,
-  toggleVisitedState,
+  usCountiesGeoJSON,
+  updateVisitedLocations,
 }) => {
   const mapRef = useRef<MapRef>(null);
 
   // State variables for tracking mouse events
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
-    null
-  );
+  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
 
   // Hover state variables
   const [hoveredStateId, setHoveredStateId] = useState<string | null>(null);
@@ -99,7 +110,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   // State for statesGeoJSON with exploration percentages
   const [statesGeoJSONWithPercentages, setStatesGeoJSONWithPercentages] = useState<any>(null);
 
-  // Update statesGeoJSON with exploration percentages
+  // Calculate exploration percentages when visitedCounties change
   useEffect(() => {
     if (usStatesGeoJSON && usCountiesGeoJSON) {
       // Create a deep copy to avoid mutating the original data
@@ -144,8 +155,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
     }
   }, [visitedCounties]);
 
-  // Rest of your MapComponent code remains the same...
-
   // Click threshold in pixels
   const clickThreshold = 5;
 
@@ -182,23 +191,30 @@ const MapComponent: React.FC<MapComponentProps> = ({
     if (feature.layer.id === 'states-layer') {
       const stateId = feature.properties?.STATEFP;
       if (stateId) {
-        // Zoom into the state and display counties
-        setSelectedState(stateId);
-
-        // Zoom into the state
-        const stateFeature = usStatesGeoJSON.features.find(
-          (feature: GeoFeature) => feature.properties?.STATEFP === stateId
-        );
-
-        if (stateFeature) {
-          const [minLng, minLat, maxLng, maxLat] = bbox(stateFeature);
-          mapRef.current?.fitBounds(
-            [
-              [minLng, minLat],
-              [maxLng, maxLat],
-            ],
-            { padding: 20 }
+        // If state is already selected, toggle visited state
+        if (selectedState === stateId) {
+          toggleVisitedState(stateId);
+        } else {
+          // Zoom into the selected state
+          const selectedStateFeature = usStatesGeoJSON.features.find(
+            (f: GeoFeature) => f.properties?.STATEFP === stateId
           );
+
+          if (selectedStateFeature) {
+            const [minLng, minLat, maxLng, maxLat] = bbox(selectedStateFeature);
+            const padding = 20; // Adjust as needed
+            mapRef.current?.fitBounds(
+              [
+                [minLng, minLat],
+                [maxLng, maxLat],
+              ],
+              {
+                padding: padding,
+                duration: 1000,
+              }
+            );
+            setSelectedState(stateId);
+          }
         }
       }
     } else if (feature.layer.id === 'counties-layer') {
@@ -220,11 +236,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
         );
       }
       const id = e.features[0].properties.STATEFP;
+      const stateName = e.features[0].properties.NAME;
+      const explorationPercentage = e.features[0].properties.explorationPercentage;
       setHoveredStateId(id);
       mapRef.current?.setFeatureState(
         { source: 'states', id },
         { hover: true }
       );
+      setTooltipContent(`${stateName}: ${explorationPercentage}% Explored`);
+      setTooltipPosition({ x: e.point.x, y: e.point.y });
     }
   };
 
@@ -236,6 +256,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
       );
     }
     setHoveredStateId(null);
+    setTooltipContent(null);
+    setTooltipPosition(null);
   };
 
   const onCountyMouseEnter = (e: any) => {
@@ -247,12 +269,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
         );
       }
       const id = e.features[0].properties.GEOID;
+      const countyName = e.features[0].properties.NAME;
       setHoveredCountyId(id);
       mapRef.current?.setFeatureState(
         { source: 'counties', id },
         { hover: true }
       );
-      const countyName = e.features[0].properties.NAME;
       setTooltipContent(countyName);
       setTooltipPosition({ x: e.point.x, y: e.point.y });
     }
@@ -268,6 +290,84 @@ const MapComponent: React.FC<MapComponentProps> = ({
     setHoveredCountyId(null);
     setTooltipContent(null);
     setTooltipPosition(null);
+  };
+
+  // Handler to toggle visited county
+  const toggleVisitedCounty = (countyId: string, stateId: string) => {
+    const countyName = countyGEOIDToName[countyId];
+    const stateCounties = visitedCounties[stateId] || [];
+    let updatedCounties: string[];
+    let updatedStates: string[] = [...visitedStates];
+
+    if (stateCounties.includes(countyId)) {
+      // Remove county from visitedCounties
+      updatedCounties = stateCounties.filter((id) => id !== countyId);
+      toast.info(`County ${countyName || countyId} marked as not visited.`);
+
+      // Update visitedCounties
+      const updatedVisitedCounties: { [key: string]: string[] } = {
+        ...visitedCounties,
+        [stateId]: updatedCounties,
+      };
+
+      // If no counties remain visited in the state, remove the state from visitedStates
+      if (updatedCounties.length === 0) {
+        updatedStates = visitedStates.filter((id) => id !== stateId);
+        delete updatedVisitedCounties[stateId];
+      }
+
+      setVisitedCounties(updatedVisitedCounties);
+      setVisitedStates(updatedStates);
+
+      // Recalculate U.S. Explored percentage
+      const totalVisitedCounties = Object.values(updatedVisitedCounties).reduce(
+        (acc, counties) => acc + counties.length,
+        0
+      );
+
+      const totalCounties = usCountiesGeoJSON.features.filter(
+        (county) => county.properties && county.properties.GEOID
+      ).length;
+
+      const newUsExplored = parseFloat(
+        ((totalVisitedCounties / totalCounties) * 100).toFixed(2)
+      );
+
+      updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
+    } else {
+      // Add county to visitedCounties
+      updatedCounties = [...stateCounties, countyId];
+      toast.success(`County ${countyName || countyId} marked as visited.`);
+
+      // Ensure the state is in visitedStates
+      if (!visitedStates.includes(stateId)) {
+        updatedStates = [...visitedStates, stateId];
+      }
+
+      const updatedVisitedCounties: { [key: string]: string[] } = {
+        ...visitedCounties,
+        [stateId]: updatedCounties,
+      };
+
+      setVisitedCounties(updatedVisitedCounties);
+      setVisitedStates(updatedStates);
+
+      // Recalculate U.S. Explored percentage
+      const totalVisitedCounties = Object.values(updatedVisitedCounties).reduce(
+        (acc, counties) => acc + counties.length,
+        0
+      );
+
+      const totalCounties = usCountiesGeoJSON.features.filter(
+        (county) => county.properties && county.properties.GEOID
+      ).length;
+
+      const newUsExplored = parseFloat(
+        ((totalVisitedCounties / totalCounties) * 100).toFixed(2)
+      );
+
+      updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
+    }
   };
 
   return (
@@ -356,19 +456,19 @@ const MapComponent: React.FC<MapComponentProps> = ({
                     ['linear'],
                     ['get', 'explorationPercentage'],
                     0,
-                    '#f0f9e8',
+                    '#bdd7e7', // Light blue for 0%
                     25,
-                    '#ccebc5',
+                    '#6baed6', // Medium light blue for 25%
                     50,
-                    '#7bccc4',
+                    '#3182bd', // Medium dark blue for 50%
                     75,
-                    '#2b8cbe',
+                    '#08519c', // Dark blue for 75%
                     100,
-                    '#084081',
+                    '#08306b', // Very dark blue for 100%
                   ],
                 ],
                 'fill-outline-color': '#FFFFFF',
-                'fill-opacity': 0.8,
+                'fill-opacity': 0.7, // Increased opacity for better visibility
               }}
             />
           </Source>
@@ -407,12 +507,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
                       ['get', 'GEOID'],
                       ['literal', visitedCounties[selectedState] || []],
                     ],
-                    '#2e7d32', // Visited county color
-                    '#a5d6a7', // Unvisited county color
+                    VISITED_COLOR, // Visited county color
+                    UNVISITED_COLOR, // Unvisited county color
                   ],
                 ],
                 'fill-outline-color': '#FFFFFF',
-                'fill-opacity': 0.6,
+                'fill-opacity': 0.7, // Increased opacity for better visibility
               }}
             />
           </Source>
@@ -435,7 +535,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 style={{ cursor: 'pointer' }}
               >
                 <svg
-                  height="10"
+                  height="12"
                   viewBox="0 0 24 24"
                   style={{ fill: '#FF5722', stroke: 'none' }}
                 >
@@ -455,11 +555,19 @@ const MapComponent: React.FC<MapComponentProps> = ({
             <div
               onClick={() => setSelectedPhoto(photo)}
               style={{ cursor: 'pointer' }}
+              role="button"
+              aria-label={`View photo: ${photo.description}`}
+              tabIndex={0}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  setSelectedPhoto(photo);
+                }
+              }}
             >
               <img
                 src={photo.thumbnailUrl}
                 alt="User Photo"
-                className="rounded-full w-8 h-8 border-2 border-white"
+                className="rounded-full w-8 h-8 border-2 border-white shadow-lg"
               />
             </div>
           </MapboxMarker>
@@ -483,6 +591,11 @@ const MapComponent: React.FC<MapComponentProps> = ({
               <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
                 {selectedPhoto.description}
               </p>
+              {selectedPhoto.location.name && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {selectedPhoto.location.name}
+                </p>
+              )}
             </div>
           </Popup>
         )}
@@ -497,10 +610,13 @@ const MapComponent: React.FC<MapComponentProps> = ({
               top: tooltipPosition.y,
               backgroundColor: 'rgba(0, 0, 0, 0.75)',
               color: '#fff',
-              padding: '5px',
+              padding: '5px 8px',
               borderRadius: '3px',
               pointerEvents: 'none',
               transform: 'translate(-50%, -100%)',
+              whiteSpace: 'nowrap',
+              fontSize: '12px',
+              zIndex: 10,
             }}
           >
             {tooltipContent}
@@ -513,16 +629,20 @@ const MapComponent: React.FC<MapComponentProps> = ({
           id="state-labels"
           type="symbol"
           source="composite"
-          sourceLayer="state_label" // Adjust based on your map style
+          sourceLayer="admin-1-boundary" // Adjust based on your Mapbox style
           layout={{
             'text-field': ['get', 'name_en'],
             'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
             'text-size': 14,
+            'text-offset': [0, 0.6],
+            'text-anchor': 'center',
+            'text-allow-overlap': true,
           }}
           paint={{
-            'text-color': '#FFFFFF',
-            'text-halo-color': '#000000',
-            'text-halo-width': 1,
+            'text-color': isDarkMode ? '#FFFFFF' : '#000000',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 2,
+            'text-halo-blur': 1,
           }}
         />
 
@@ -531,7 +651,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
           id="city-labels"
           type="symbol"
           source="composite"
-          sourceLayer="place_label" // Adjust based on your map style
+          sourceLayer="place_label" // Adjust based on your Mapbox style
           layout={{
             'text-field': ['get', 'name_en'],
             'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
@@ -544,32 +664,62 @@ const MapComponent: React.FC<MapComponentProps> = ({
               10,
               16,
             ],
+            'text-offset': [0, 0.6],
+            'text-anchor': 'center',
+            'text-allow-overlap': true,
           }}
           paint={{
-            'text-color': '#FFFFFF',
-            'text-halo-color': '#000000',
-            'text-halo-width': 1,
+            'text-color': isDarkMode ? '#FFFFFF' : '#000000',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 2,
+            'text-halo-blur': 1,
+          }}
+        />
+
+        {/* Township Labels */}
+        <Layer
+          id="township-labels"
+          type="symbol"
+          source="composite"
+          sourceLayer="place_label" // Adjust based on your Mapbox style
+          filter={['==', ['get', 'class'], 'township']} // Example filter; adjust based on your data
+          layout={{
+            'text-field': ['get', 'name_en'],
+            'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+            'text-size': 12,
+            'text-offset': [0, 0.6],
+            'text-anchor': 'center',
+            'text-allow-overlap': true,
+          }}
+          paint={{
+            'text-color': isDarkMode ? '#FFFFFF' : '#000000',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 2,
+            'text-halo-blur': 1,
           }}
         />
       </ReactMapGL>
 
       {/* Map Legend */}
       <div className="absolute bottom-4 left-4 bg-white dark:bg-gray-700 p-4 rounded shadow">
-        <h4 className="font-bold mb-2">Exploration Legend</h4>
-        <div className="flex items-center">
-          <span className="w-4 h-4 bg-[#f0f9e8] mr-2"></span> 0%
+        <h4 className="font-bold mb-2 text-gray-800 dark:text-gray-200">Exploration Legend</h4>
+        <div className="flex items-center mb-1">
+          <span className="w-4 h-4 bg-[#bdd7e7] mr-2 border border-gray-300 rounded"></span> 0%
+        </div>
+        <div className="flex items-center mb-1">
+          <span className="w-4 h-4 bg-[#6baed6] mr-2 border border-gray-300 rounded"></span> 25%
+        </div>
+        <div className="flex items-center mb-1">
+          <span className="w-4 h-4 bg-[#3182bd] mr-2 border border-gray-300 rounded"></span> 50%
+        </div>
+        <div className="flex items-center mb-1">
+          <span className="w-4 h-4 bg-[#08519c] mr-2 border border-gray-300 rounded"></span> 75%
+        </div>
+        <div className="flex items-center mb-2">
+          <span className="w-4 h-4 bg-[#08306b] mr-2 border border-gray-300 rounded"></span> 100%
         </div>
         <div className="flex items-center">
-          <span className="w-4 h-4 bg-[#ccebc5] mr-2"></span> 25%
-        </div>
-        <div className="flex items-center">
-          <span className="w-4 h-4 bg-[#7bccc4] mr-2"></span> 50%
-        </div>
-        <div className="flex items-center">
-          <span className="w-4 h-4 bg-[#2b8cbe] mr-2"></span> 75%
-        </div>
-        <div className="flex items-center">
-          <span className="w-4 h-4 bg-[#084081] mr-2"></span> 100%
+          <span className="w-4 h-4 bg-[#FFD700] mr-2 border border-gray-300 rounded"></span> Hovered
         </div>
       </div>
     </div>

@@ -21,6 +21,20 @@ import StatsPanel from '../../components/StatsPanel';
 import TopControls from '../../components/TopControls';
 
 // Define TypeScript interfaces
+interface Photo {
+  _id: string;
+  userId: string;
+  photoUrl: string;
+  thumbnailUrl: string;
+  location: {
+    type: string;
+    coordinates: [number, number]; // [longitude, latitude]
+    name?: string; // Optional location name
+  };
+  description: string;
+  createdAt: string;
+}
+
 interface GeoFeatureProperties {
   STATEFP?: string;
   GEOID?: string;
@@ -45,8 +59,8 @@ export default function YourMapPage() {
   const [error, setError] = useState<string | null>(null);
   const [usExplored, setUsExplored] = useState<number>(0); // U.S. Explored percentage
   const [isDarkMode, setIsDarkMode] = useState<boolean>(true); // Default to dark mode
-  const [userPhotos, setUserPhotos] = useState<any[]>([]);
-  const [selectedPhoto, setSelectedPhoto] = useState<any | null>(null);
+  const [userPhotos, setUserPhotos] = useState<Photo[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false); // For upload modal
 
@@ -230,84 +244,6 @@ export default function YourMapPage() {
     updateVisitedLocations(updatedStates, updatedCounties, newUsExplored);
   };
 
-  // Handler to toggle visited county
-  const toggleVisitedCounty = (countyId: string, stateId: string) => {
-    const countyName = countyGEOIDToName[countyId];
-    const stateCounties = visitedCounties[stateId] || [];
-    let updatedCounties: string[];
-    let updatedStates: string[] = [...visitedStates];
-
-    if (stateCounties.includes(countyId)) {
-      // Remove county from visitedCounties
-      updatedCounties = stateCounties.filter((id) => id !== countyId);
-      toast.info(`County ${countyName || countyId} marked as not visited.`);
-
-      // Update visitedCounties
-      const updatedVisitedCounties: { [key: string]: string[] } = {
-        ...visitedCounties,
-        [stateId]: updatedCounties,
-      };
-
-      // If no counties remain visited in the state, remove the state from visitedStates
-      if (updatedCounties.length === 0) {
-        updatedStates = visitedStates.filter((id) => id !== stateId);
-        delete updatedVisitedCounties[stateId];
-      }
-
-      setVisitedCounties(updatedVisitedCounties);
-      setVisitedStates(updatedStates);
-
-      // Recalculate U.S. Explored percentage
-      const totalVisitedCounties = Object.values(updatedVisitedCounties).reduce(
-        (acc, counties) => acc + counties.length,
-        0
-      );
-
-      const totalCounties = usCountiesGeoJSON.features.filter(
-        (county) => county.properties && county.properties.GEOID
-      ).length;
-
-      const newUsExplored = parseFloat(
-        ((totalVisitedCounties / totalCounties) * 100).toFixed(2)
-      );
-
-      updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
-    } else {
-      // Add county to visitedCounties
-      updatedCounties = [...stateCounties, countyId];
-      toast.success(`County ${countyName || countyId} marked as visited.`);
-
-      // Ensure the state is in visitedStates
-      if (!visitedStates.includes(stateId)) {
-        updatedStates = [...visitedStates, stateId];
-      }
-
-      const updatedVisitedCounties: { [key: string]: string[] } = {
-        ...visitedCounties,
-        [stateId]: updatedCounties,
-      };
-
-      setVisitedCounties(updatedVisitedCounties);
-      setVisitedStates(updatedStates);
-
-      // Recalculate U.S. Explored percentage
-      const totalVisitedCounties = Object.values(updatedVisitedCounties).reduce(
-        (acc, counties) => acc + counties.length,
-        0
-      );
-
-      const totalCounties = usCountiesGeoJSON.features.filter(
-        (county) => county.properties && county.properties.GEOID
-      ).length;
-
-      const newUsExplored = parseFloat(
-        ((totalVisitedCounties / totalCounties) * 100).toFixed(2)
-      );
-
-      updateVisitedLocations(updatedStates, updatedVisitedCounties, newUsExplored);
-    }
-  };
-
   // Calculate the percentage of explored counties in a state
   const calculateStateExploredPercentage = (stateId: string): string => {
     const stateCounties = usCountiesGeoJSON.features.filter(
@@ -407,6 +343,8 @@ export default function YourMapPage() {
                 isDarkMode={isDarkMode}
                 visitedStates={visitedStates}
                 visitedCounties={visitedCounties}
+                setVisitedStates={setVisitedStates}
+                setVisitedCounties={setVisitedCounties}
                 selectedState={selectedState}
                 setSelectedState={setSelectedState}
                 userPhotos={userPhotos}
@@ -414,8 +352,9 @@ export default function YourMapPage() {
                 setSelectedPhoto={setSelectedPhoto}
                 stateFIPSToName={stateFIPSToName}
                 countyGEOIDToName={countyGEOIDToName}
-                toggleVisitedCounty={toggleVisitedCounty}
                 toggleVisitedState={toggleVisitedState}
+                usCountiesGeoJSON={usCountiesGeoJSON}
+                updateVisitedLocations={updateVisitedLocations}
               />
             </div>
 
