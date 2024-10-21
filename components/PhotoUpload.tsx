@@ -1,6 +1,6 @@
 // File: /components/PhotoUpload.tsx
 
-import React, { useState, ChangeEvent, Fragment } from 'react';
+import React, { useState, ChangeEvent, Fragment, useEffect } from 'react';
 import EXIF from 'exif-js';
 import axios from 'axios';
 import { Dialog, Transition } from '@headlessui/react';
@@ -24,13 +24,13 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [description, setDescription] = useState<string>('');
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
   const [location, setLocation] = useState<{ name: string; lat: number; lng: number } | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [exifLocation, setExifLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [searchBoxOptions, setSearchBoxOptions] = useState<google.maps.places.AutocompleteOptions>({});
 
-  const searchBoxRef = React.useRef<any>(null);
+  const searchBoxRef = React.useRef<google.maps.places.SearchBox | null>(null);
 
   // Handle file selection
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -57,8 +57,16 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
       if (lat && lon && latRef && lonRef) {
         const parsedLatitude = convertDMSToDD(lat as number[], latRef as string);
         const parsedLongitude = convertDMSToDD(lon as number[], lonRef as string);
-        setLatitude(parsedLatitude);
-        setLongitude(parsedLongitude);
+        setExifLocation({ lat: parsedLatitude, lng: parsedLongitude });
+
+        // Update searchBoxOptions to bias towards EXIF location
+        setSearchBoxOptions({
+          bounds: new google.maps.LatLngBounds(
+            new google.maps.LatLng(parsedLatitude - 0.5, parsedLongitude - 0.5),
+            new google.maps.LatLng(parsedLatitude + 0.5, parsedLongitude + 0.5)
+          ),
+          // You can adjust the radius or other options as needed
+        });
       } else {
         console.log('No EXIF GPS data found.');
       }
@@ -77,17 +85,6 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
     return dd;
   };
 
-  // Handle manual input of latitude and longitude
-  const handleLatitudeChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = parseFloat(event.target.value);
-    setLatitude(isNaN(value) ? null : value);
-  };
-
-  const handleLongitudeChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = parseFloat(event.target.value);
-    setLongitude(isNaN(value) ? null : value);
-  };
-
   // Handle description change
   const handleDescriptionChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setDescription(event.target.value);
@@ -95,16 +92,16 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
 
   // Handle place selection from the autocomplete search box
   const handlePlaceChanged = () => {
-    const places = searchBoxRef.current.getPlaces();
-    if (places && places.length > 0) {
-      const place = places[0];
-      if (place.geometry) {
-        const name = place.formatted_address || place.name;
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        setLocation({ name, lat, lng });
-        setLatitude(lat);
-        setLongitude(lng);
+    if (searchBoxRef.current) {
+      const places = searchBoxRef.current.getPlaces();
+      if (places && places.length > 0) {
+        const place = places[0];
+        if (place.geometry) {
+          const name = place.formatted_address || place.name;
+          const lat = place.geometry.location.lat();
+          const lng = place.geometry.location.lng();
+          setLocation({ name, lat, lng });
+        }
       }
     }
   };
@@ -116,8 +113,8 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
       return;
     }
 
-    if (latitude === null || longitude === null) {
-      setUploadError('Please provide a location or select a photo with location data.');
+    if (location === null) {
+      setUploadError('Please select a location for your photo.');
       return;
     }
 
@@ -128,11 +125,9 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
       const formData = new FormData();
       formData.append('photo', selectedFile);
       formData.append('description', description);
-      formData.append('latitude', latitude.toString());
-      formData.append('longitude', longitude.toString());
-      if (location && location.name) {
-        formData.append('locationName', location.name);
-      }
+      formData.append('latitude', location.lat.toString());
+      formData.append('longitude', location.lng.toString());
+      formData.append('locationName', location.name);
 
       const response = await axios.post('/api/photos/upload', formData, {
         headers: {
@@ -146,9 +141,9 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
         setSelectedFile(null);
         setPreviewSrc(null);
         setDescription('');
-        setLatitude(null);
-        setLongitude(null);
         setLocation(null);
+        setExifLocation(null);
+        setSearchBoxOptions({});
         if (onUploadSuccess) onUploadSuccess();
         onClose();
       } else {
@@ -161,6 +156,19 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
       setIsUploading(false);
     }
   };
+
+  // Reset form when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedFile(null);
+      setPreviewSrc(null);
+      setDescription('');
+      setLocation(null);
+      setExifLocation(null);
+      setUploadError(null);
+      setSearchBoxOptions({});
+    }
+  }, [isOpen]);
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -195,6 +203,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
                 <button
                   onClick={onClose}
                   className="absolute top-3 right-3 text-gray-800 dark:text-gray-200 hover:text-red-500"
+                  aria-label="Close Modal"
                 >
                   &times;
                 </button>
@@ -243,7 +252,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
                 {/* Location Search */}
                 <div className="mb-4">
                   <label className="block text-gray-700 dark:text-gray-200 mb-2">
-                    Location (optional):
+                    Location:
                   </label>
                   <LoadScript
                     googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY || ''}
@@ -252,6 +261,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
                     <StandaloneSearchBox
                       onLoad={(ref) => (searchBoxRef.current = ref)}
                       onPlacesChanged={handlePlaceChanged}
+                      options={searchBoxOptions}
                     >
                       <input
                         type="text"
@@ -265,35 +275,6 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
                       Selected Location: {location.name}
                     </div>
                   )}
-                </div>
-
-                {/* Latitude and Longitude Inputs */}
-                <div className="mb-4">
-                  <label className="block text-gray-700 dark:text-gray-200 mb-2">
-                    Latitude (auto-detected from photo or location search):
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={latitude !== null ? latitude : ''}
-                    onChange={handleLatitudeChange}
-                    className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
-                    placeholder="e.g., 37.7749"
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-gray-700 dark:text-gray-200 mb-2">
-                    Longitude (auto-detected from photo or location search):
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={longitude !== null ? longitude : ''}
-                    onChange={handleLongitudeChange}
-                    className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
-                    placeholder="e.g., -122.4194"
-                  />
                 </div>
 
                 {uploadError && (

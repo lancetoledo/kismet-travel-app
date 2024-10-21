@@ -41,6 +41,7 @@ interface GeoFeatureProperties {
   GEOID?: string;
   NAME?: string;
   explorationPercentage?: number;
+  class?: string; // For filtering label types
 }
 
 interface GeoFeature extends GeoJSON.Feature<GeoJSON.Geometry, GeoFeatureProperties> {}
@@ -292,6 +293,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
     setTooltipPosition(null);
   };
 
+  // Handler to toggle visited state (if needed)
+  const toggleVisitedState = (stateId: string) => {
+    // Implement toggling logic if required
+    // For example, mark all counties in the state as visited or not
+    // This function was referenced in handleMapClick but not defined
+    // You may need to implement it based on your application logic
+    toast.info(`State ${stateFIPSToName[stateId] || stateId} toggled.`);
+  };
+
   // Handler to toggle visited county
   const toggleVisitedCounty = (countyId: string, stateId: string) => {
     const countyName = countyGEOIDToName[countyId];
@@ -388,7 +398,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
           if (!mapRef.current) return;
 
           const features = mapRef.current.queryRenderedFeatures(event.point, {
-            layers: selectedState ? ['counties-layer'] : ['states-layer'],
+            layers: selectedState ? ['counties-layer', 'states-layer'] : ['states-layer'],
           });
 
           if (features && features.length > 0) {
@@ -456,15 +466,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
                     ['linear'],
                     ['get', 'explorationPercentage'],
                     0,
-                    '#bdd7e7', // Light blue for 0%
+                    '#bdd7e7', // Lightest blue for 0%
                     25,
-                    '#6baed6', // Medium light blue for 25%
+                    '#6baed6', // Light blue for 25%
                     50,
-                    '#3182bd', // Medium dark blue for 50%
+                    '#3182bd', // Medium blue for 50%
                     75,
                     '#08519c', // Dark blue for 75%
                     100,
-                    '#08306b', // Very dark blue for 100%
+                    '#08306b', // Darkest blue for 100%
                   ],
                 ],
                 'fill-outline-color': '#FFFFFF',
@@ -624,25 +634,26 @@ const MapComponent: React.FC<MapComponentProps> = ({
         )}
 
         {/* Label Layers */}
-        {/* State Labels */}
+        {/* Township Labels */}
         <Layer
-          id="state-labels"
+          id="township-labels"
           type="symbol"
           source="composite"
-          sourceLayer="admin-1-boundary" // Adjust based on your Mapbox style
+          source-layer="place_label" // Ensure this is correct based on your Mapbox style
+          filter={['==', ['get', 'class'], 'township']} // Adjust based on actual data
           layout={{
             'text-field': ['get', 'name_en'],
             'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-            'text-size': 14,
+            'text-size': 12,
             'text-offset': [0, 0.6],
             'text-anchor': 'center',
-            'text-allow-overlap': true,
+            'text-allow-overlap': false, // Prevent overlapping labels
           }}
           paint={{
             'text-color': isDarkMode ? '#FFFFFF' : '#000000',
             'text-halo-color': '#FFFFFF',
-            'text-halo-width': 2,
-            'text-halo-blur': 1,
+            'text-halo-width': 1, // Reduced from 2 to 1
+            'text-halo-blur': 0.5, // Reduced from 1 to 0.5
           }}
         />
 
@@ -651,7 +662,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
           id="city-labels"
           type="symbol"
           source="composite"
-          sourceLayer="place_label" // Adjust based on your Mapbox style
+          source-layer="place_label" // Ensure this is correct based on your Mapbox style
+          filter={['==', ['get', 'class'], 'city']} // Filter for city labels
           layout={{
             'text-field': ['get', 'name_en'],
             'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
@@ -666,36 +678,36 @@ const MapComponent: React.FC<MapComponentProps> = ({
             ],
             'text-offset': [0, 0.6],
             'text-anchor': 'center',
-            'text-allow-overlap': true,
+            'text-allow-overlap': false, // Prevent overlapping labels
           }}
           paint={{
             'text-color': isDarkMode ? '#FFFFFF' : '#000000',
             'text-halo-color': '#FFFFFF',
-            'text-halo-width': 2,
-            'text-halo-blur': 1,
+            'text-halo-width': 1, // Reduced from 2 to 1
+            'text-halo-blur': 0.5, // Reduced from 1 to 0.5
           }}
         />
 
-        {/* Township Labels */}
+        {/* State Labels */}
         <Layer
-          id="township-labels"
+          id="state-labels"
           type="symbol"
           source="composite"
-          sourceLayer="place_label" // Adjust based on your Mapbox style
-          filter={['==', ['get', 'class'], 'township']} // Example filter; adjust based on your data
+          source-layer="admin_label" // Changed to 'admin_label' for state labels
+          filter={['==', ['get', 'admin_level'], 1]} // Adjust filter based on actual data
           layout={{
             'text-field': ['get', 'name_en'],
             'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-            'text-size': 12,
+            'text-size': 14,
             'text-offset': [0, 0.6],
             'text-anchor': 'center',
-            'text-allow-overlap': true,
+            'text-allow-overlap': false, // Prevent overlapping labels
           }}
           paint={{
             'text-color': isDarkMode ? '#FFFFFF' : '#000000',
             'text-halo-color': '#FFFFFF',
-            'text-halo-width': 2,
-            'text-halo-blur': 1,
+            'text-halo-width': 1, // Reduced from 2 to 1
+            'text-halo-blur': 0.5, // Reduced from 1 to 0.5
           }}
         />
       </ReactMapGL>
