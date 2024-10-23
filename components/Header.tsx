@@ -66,7 +66,7 @@ export default function Header() {
             href="/login"
             className="flex mx-[10px] bg-orange-500 dark:bg-orange-600 w-20 h-10 text-white justify-center items-center hover:bg-orange-600 dark:hover:bg-orange-700 transition-colors duration-200"
           >
-      
+            Login
           </Link>
         )}
       </nav>
