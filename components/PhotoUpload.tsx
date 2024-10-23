@@ -1,16 +1,15 @@
-// File: /components/PhotoUpload.tsx
-
-import React, { useState, ChangeEvent, Fragment, useEffect } from 'react';
+import React, { useState, ChangeEvent, Fragment, useEffect, useContext } from 'react';
 import EXIF from 'exif-js';
 import axios from 'axios';
 import { Dialog, Transition } from '@headlessui/react';
 import { LoadScript, StandaloneSearchBox } from '@react-google-maps/api';
 import { toast } from 'react-toastify';
 
+import { PhotoContext } from '../context/PhotoContext';
+
 interface PhotoUploadProps {
   isOpen: boolean;
   onClose: () => void;
-  onUploadSuccess?: () => void; // Optional callback after successful upload
 }
 
 const libraries: (
@@ -21,11 +20,7 @@ const libraries: (
   | 'visualization'
 )[] = ['places'];
 
-const PhotoUpload: React.FC<PhotoUploadProps> = ({
-  isOpen,
-  onClose,
-  onUploadSuccess,
-}) => {
+const PhotoUpload: React.FC<PhotoUploadProps> = ({ isOpen, onClose }) => {
   // State variables with explicit types
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
@@ -37,6 +32,8 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
   const [searchBoxOptions, setSearchBoxOptions] = useState<google.maps.places.AutocompleteOptions>({});
 
   const searchBoxRef = React.useRef<google.maps.places.SearchBox | null>(null);
+
+  const { fetchUserPhotos } = useContext(PhotoContext);
 
   // Handle file selection
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -150,7 +147,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
         setLocation(null);
         setExifLocation(null);
         setSearchBoxOptions({});
-        if (onUploadSuccess) onUploadSuccess();
+        fetchUserPhotos(); // Fetch updated photos
         onClose();
       } else {
         setUploadError(response.data.error || 'Failed to upload photo.');

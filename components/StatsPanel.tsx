@@ -1,38 +1,49 @@
-// File: /components/StatsPanel.tsx
+import React, { useContext } from 'react';
+import { MapContext } from '../context/MapContext';
+import { VisitedContext } from '../context/VisitedContext';
 
-import React from 'react';
+import usStatesGeoJSON from '../data/usStatesFeatureCollection.json';
+import usCountiesGeoJSON from '../data/usCountiesFeatureCollection.json';
 
 interface StatsPanelProps {
-  selectedState: string | null;
-  visitedStates: string[];
-  visitedCounties: { [stateId: string]: string[] };
-  usExplored: number;
-  stateFIPSToName: { [key: string]: string };
-  calculateStateExploredPercentage: (stateId: string) => string;
-  resetZoom: () => void;
-  usCountiesGeoJSON: any;
   userName: string | null;
 }
 
-interface GeoFeatureProperties {
-  STATEFP?: string;
-  GEOID?: string;
-  NAME?: string;
-}
+const StatsPanel: React.FC<StatsPanelProps> = ({ userName }) => {
+  const { selectedState, setSelectedState } = useContext(MapContext);
+  const { visitedStates, visitedCounties, usExplored } = useContext(VisitedContext);
 
-interface GeoFeature extends GeoJSON.Feature<GeoJSON.Geometry, GeoFeatureProperties> {}
+  // Map state FIPS codes to state names
+  const stateFIPSToName: { [key: string]: string } = {};
+  usStatesGeoJSON.features.forEach((feature) => {
+    const stateId = feature.properties?.STATEFP;
+    const stateName = feature.properties?.NAME;
+    if (stateId && stateName) {
+      stateFIPSToName[stateId] = stateName;
+    }
+  });
 
-const StatsPanel: React.FC<StatsPanelProps> = ({
-  selectedState,
-  visitedStates,
-  visitedCounties,
-  usExplored,
-  stateFIPSToName,
-  calculateStateExploredPercentage,
-  resetZoom,
-  usCountiesGeoJSON,
-  userName,
-}) => {
+  // Calculate state explored percentage
+  const calculateStateExploredPercentage = (stateId: string): string => {
+    const stateCounties = usCountiesGeoJSON.features.filter(
+      (county) => county.properties?.STATEFP === stateId
+    );
+    const totalCounties = stateCounties.length;
+    const visitedCountyIds = visitedCounties[stateId] || [];
+    const visitedCountiesCount = visitedCountyIds.length;
+
+    if (totalCounties === 0) {
+      return '0.00';
+    }
+    const percentage = ((visitedCountiesCount / totalCounties) * 100).toFixed(2);
+    return percentage;
+  };
+
+  // Reset zoom to default position
+  const resetZoom = () => {
+    setSelectedState(null);
+  };
+
   return (
     <div className="w-full lg:w-80 bg-white shadow rounded-lg p-6 dark:bg-gray-800">
       <h2 className="text-2xl font-semibold text-green-700 mb-4 text-center dark:text-green-300">
@@ -68,8 +79,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({
             <span className="font-bold text-green-700 dark:text-green-300">
               {
                 usCountiesGeoJSON.features.filter(
-                  (county: GeoFeature) =>
-                    county.properties?.STATEFP === selectedState
+                  (county) => county.properties?.STATEFP === selectedState
                 ).length
               }
             </span>

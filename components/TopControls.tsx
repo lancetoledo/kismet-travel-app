@@ -1,19 +1,14 @@
-// File: /components/TopControls.tsx
-
-import React from 'react';
+import React, { useContext } from 'react';
 import { FiMoon, FiSun, FiUpload } from 'react-icons/fi';
+import { MapContext } from '../context/MapContext';
 
 interface TopControlsProps {
-  isDarkMode: boolean;
-  toggleDarkMode: () => void;
   openUploadModal: () => void;
 }
 
-const TopControls: React.FC<TopControlsProps> = ({
-  isDarkMode,
-  toggleDarkMode,
-  openUploadModal,
-}) => {
+const TopControls: React.FC<TopControlsProps> = ({ openUploadModal }) => {
+  const { isDarkMode, toggleDarkMode } = useContext(MapContext);
+
   return (
     <div className="flex justify-end items-center space-x-4 mb-4">
       {/* Upload Photo Icon */}
