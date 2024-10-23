@@ -693,8 +693,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
           id="state-labels"
           type="symbol"
           source="composite"
-          source-layer="admin_label" // Changed to 'admin_label' for state labels
-          filter={['==', ['get', 'admin_level'], 1]} // Adjust filter based on actual data
+          source-layer="place_label" // Corrected source-layer
+          filter={['==', ['get', 'class'], 'state']} // Filter for state labels
           layout={{
             'text-field': ['get', 'name_en'],
             'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],

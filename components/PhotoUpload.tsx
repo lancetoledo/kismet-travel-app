@@ -13,7 +13,13 @@ interface PhotoUploadProps {
   onUploadSuccess?: () => void; // Optional callback after successful upload
 }
 
-const libraries = ['places'];
+const libraries: (
+  | 'drawing'
+  | 'geometry'
+  | 'localContext'
+  | 'places'
+  | 'visualization'
+)[] = ['places'];
 
 const PhotoUpload: React.FC<PhotoUploadProps> = ({
   isOpen,
@@ -65,7 +71,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
             new google.maps.LatLng(parsedLatitude - 0.5, parsedLongitude - 0.5),
             new google.maps.LatLng(parsedLatitude + 0.5, parsedLongitude + 0.5)
           ),
-          // You can adjust the radius or other options as needed
+          strictBounds: false, // Allows suggestions outside the bounds
         });
       } else {
         console.log('No EXIF GPS data found.');
