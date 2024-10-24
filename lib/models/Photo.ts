@@ -1,6 +1,6 @@
 // File: /lib/models/Photo.ts
 
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IPhoto extends Document {
   userId: mongoose.Types.ObjectId;
@@ -15,7 +15,7 @@ export interface IPhoto extends Document {
   createdAt: Date;
 }
 
-const PhotoSchema: Schema = new Schema({
+const PhotoSchema: Schema<IPhoto> = new Schema<IPhoto>({
   userId: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
   photoUrl: { type: String, required: true },
   thumbnailUrl: { type: String, required: true },
@@ -31,4 +31,7 @@ const PhotoSchema: Schema = new Schema({
 // Create a geospatial index on the location field for efficient queries
 PhotoSchema.index({ location: '2dsphere' });
 
-export default mongoose.models.Photo || mongoose.model<IPhoto>('Photo', PhotoSchema);
+// Prevent model overwrite upon initial compile
+const Photo: Model<IPhoto> = mongoose.models.Photo || mongoose.model<IPhoto>('Photo', PhotoSchema);
+
+export default Photo;

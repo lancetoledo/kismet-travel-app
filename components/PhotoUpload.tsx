@@ -1,3 +1,5 @@
+// File: /components/PhotoUpload.tsx
+
 import React, { useState, ChangeEvent, Fragment, useEffect, useContext } from 'react';
 import EXIF from 'exif-js';
 import axios from 'axios';
@@ -29,7 +31,9 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ isOpen, onClose }) => {
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [exifLocation, setExifLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [searchBoxOptions, setSearchBoxOptions] = useState<google.maps.places.AutocompleteOptions>({});
+  const [searchBoxOptions, setSearchBoxOptions] = useState<google.maps.places.AutocompleteOptions>(
+    {}
+  );
 
   const searchBoxRef = React.useRef<google.maps.places.SearchBox | null>(null);
 
@@ -100,7 +104,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ isOpen, onClose }) => {
       if (places && places.length > 0) {
         const place = places[0];
         if (place.geometry) {
-          const name = place.formatted_address || place.name;
+          const name = place.formatted_address || place.name || '';
           const lat = place.geometry.location.lat();
           const lng = place.geometry.location.lng();
           setLocation({ name, lat, lng });
@@ -132,11 +136,8 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ isOpen, onClose }) => {
       formData.append('longitude', location.lng.toString());
       formData.append('locationName', location.name);
 
-      const response = await axios.post('/api/photos/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // Do not set the Content-Type header manually
+      const response = await axios.post('/api/photos/upload', formData);
 
       if (response.data.success) {
         toast.success('Photo uploaded successfully!');
@@ -224,6 +225,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ isOpen, onClose }) => {
                   </label>
                   <input
                     type="file"
+                    name="photo" // Ensured name attribute matches FormData
                     accept="image/*"
                     onChange={handleFileChange}
                     className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
@@ -245,6 +247,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({ isOpen, onClose }) => {
                     Description:
                   </label>
                   <textarea
+                    name="description" // Added name attribute
                     value={description}
                     onChange={handleDescriptionChange}
                     className="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"

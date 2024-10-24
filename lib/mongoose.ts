@@ -1,15 +1,16 @@
-// /lib/mongoose.ts
+// File: /lib/mongoose.ts
 
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI as string;
+const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
-  throw new Error('Invalid/Missing environment variable: "MONGODB_URI"');
+  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
 }
 
 /**
  * Global is used here to maintain a cached connection across hot reloads in development.
+ * This prevents connections growing exponentially during API Route usage.
  */
 let cached = (global as any).mongoose;
 
@@ -25,10 +26,17 @@ async function connectToDatabase() {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
+      // Add any other Mongoose options here if needed
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => mongoose);
+    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
+      return mongoose;
+    }).catch((err) => {
+      console.error('MongoDB connection error:', err);
+      throw err;
+    });
   }
+
   cached.conn = await cached.promise;
   return cached.conn;
 }
